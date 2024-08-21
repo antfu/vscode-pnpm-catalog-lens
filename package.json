@@ -1,0 +1,101 @@
+{
+  "publisher": "antfu",
+  "name": "pnpm-catalog-lens",
+  "displayName": "PNPM Catalog Lens",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.7.1",
+  "description": "Show inlay version for PNPM catalogs",
+  "author": "Anthony Fu <anthonyfu117@hotmail.com>",
+  "license": "MIT",
+  "funding": "https://github.com/sponsors/antfu",
+  "homepage": "https://github.com/antfu/vscode-pnpm-catalog-lens#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antfu/vscode-pnpm-catalog-lens"
+  },
+  "bugs": {
+    "url": "https://github.com/antfu/vscode-pnpm-catalog-lens/issues"
+  },
+  "sponsor": {
+    "url": "https://github.com/sponsors/antfu"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/index.js",
+  "icon": "res/icon.png",
+  "files": [
+    "LICENSE.md",
+    "dist/*",
+    "res/*"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": [
+    "workspaceContains:pnpm-workspace.yaml"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "category": "PNPM Catalog Lens",
+        "title": "Toggle",
+        "command": "pnpmCatalogLens.toggle"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "pnpmCatalogLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --external vscode",
+    "dev": "nr build --watch",
+    "prepare": "nr update",
+    "update": "vscode-ext-gen --output src/generated/meta.ts --scope pnpmCatalogLens",
+    "lint": "eslint .",
+    "vscode:prepublish": "nr build",
+    "publish": "vsce publish --no-dependencies",
+    "pack": "vsce package --no-dependencies",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "release": "bumpp && nr publish"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^2.26.0",
+    "@antfu/ni": "^0.22.4",
+    "@babel/core": "^7.25.2",
+    "@babel/preset-typescript": "^7.24.7",
+    "@babel/traverse": "^7.25.3",
+    "@babel/types": "^7.25.2",
+    "@reactive-vscode/vueuse": "^0.2.1",
+    "@types/babel__core": "^7.20.5",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.4.1",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "acorn": "^8.12.1",
+    "acorn-loose": "^8.4.0",
+    "acorn-walk": "^8.3.3",
+    "bumpp": "^9.5.1",
+    "eslint": "^9.9.0",
+    "eslint-plugin-format": "^0.1.2",
+    "esno": "^4.7.0",
+    "find-up": "^7.0.0",
+    "js-yaml": "^4.1.0",
+    "pnpm": "^9.7.1",
+    "reactive-vscode": "0.2.0-beta.9",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2",
+    "vitest": "^2.0.5",
+    "vscode-ext-gen": "^0.4.2"
+  }
+}
