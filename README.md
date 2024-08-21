@@ -35,6 +35,10 @@ Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">PNPM
   </a>
 </p>
 
+## Credits
+
+Logo is modified from [Catppuccin Icons](https://github.com/catppuccin/vscode-icons) ([`pnpm.svg`](https://github.com/catppuccin/vscode-icons/blob/main/icons/css-variables/pnpm.svg)), licensed under [MIT](https://github.com/catppuccin/vscode-icons/blob/main/LICENSE).
+
 ## License
 
 [MIT](./LICENSE) License © 2022 [Anthony Fu](https://github.com/antfu)
