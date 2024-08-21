@@ -14,7 +14,7 @@ Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">PNPM
 </p>
 
 <p align="center">
-<img width="400" alt="Screenshot" src="https://github.com/user-attachments/assets/fc4a6f53-2f1f-4c2e-b154-2f735a8a5f04">
+<img width="600" alt="Screenshot" src="https://github.com/user-attachments/assets/fc4a6f53-2f1f-4c2e-b154-2f735a8a5f04">
 </p>
 
 ## Configs
