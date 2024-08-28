@@ -45,8 +45,8 @@
       },
       {
         "category": "PNPM Catalog Lens",
-        "title": "JumpLocation",
-        "command": "pnpmCatalogLens.jumpLocation"
+        "title": "Go to Definition",
+        "command": "pnpmCatalogLens.gotoDefinition"
       }
     ],
     "configuration": {

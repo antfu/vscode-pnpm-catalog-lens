@@ -210,9 +210,15 @@ const { activate, deactivate } = defineExtension(() => {
   )
 
   useCommand(
-    commands.jumpLocation,
+    commands.gotoDefinition,
     ({ workspacePath, versionPosition }: JumpLocationParams) => {
-      executeCommand('editor.action.goToLocations', Uri.file(workspacePath), new Position(versionPosition.line - 1, versionPosition.column - 1), [], 'goto')
+      executeCommand(
+        'editor.action.goToLocations',
+        Uri.file(workspacePath),
+        new Position(versionPosition.line - 1, versionPosition.column - 1),
+        [],
+        'goto',
+      )
     },
   )
 })

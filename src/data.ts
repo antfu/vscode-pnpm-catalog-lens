@@ -5,6 +5,7 @@ import { parseYAML } from 'yaml-eslint-parser'
 import type { AST } from 'yaml-eslint-parser'
 import { logger } from './utils'
 import { workspaceFileName } from './constants'
+import { commands } from './generated/meta'
 
 export interface PnpmWorkspacData {
   catalog?: Record<string, string>
@@ -56,7 +57,7 @@ export class PnpmWorkspaceManager {
     if (versionPosition) {
       const args = [{ workspacePath, versionPosition } as JumpLocationParams]
       versionPositionCommandUri = Uri.parse(
-        `command:pnpmCatalogLens.jumpLocation?${encodeURIComponent(JSON.stringify(args))}`,
+        `command:${commands.gotoDefinition}?${encodeURIComponent(JSON.stringify(args))}`,
       )
     }
 
