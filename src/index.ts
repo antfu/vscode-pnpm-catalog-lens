@@ -1,6 +1,6 @@
-import { computed, defineExtension, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
+import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import type { DecorationOptions, Selection } from 'vscode'
-import { ConfigurationTarget, MarkdownString, Range, window, workspace } from 'vscode'
+import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { parseSync } from '@babel/core'
 import traverse from '@babel/traverse'
 // @ts-expect-error missing types
@@ -9,7 +9,9 @@ import type { ObjectProperty, StringLiteral } from '@babel/types'
 import { logger } from './utils'
 import { config } from './config'
 import { commands } from './generated/meta'
+import type { JumpLocationParams } from './data'
 import { PnpmWorkspaceManager } from './data'
+import { catalogPrefix } from './constants'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new PnpmWorkspaceManager()
@@ -87,12 +89,12 @@ const { activate, deactivate } = defineExtension(() => {
           return
         }
 
-        if (!value.value.startsWith('catalog:'))
+        if (!value.value.startsWith(catalogPrefix))
           return
 
         items.push({
           node: path.node,
-          catalog: value.value.slice('catalog:'.length).trim() || 'default',
+          catalog: value.value.slice(catalogPrefix.length).trim() || 'default',
         })
       },
     })
@@ -127,18 +129,18 @@ const { activate, deactivate } = defineExtension(() => {
     const hovers: DecorationOptions[] = []
 
     await Promise.all(props.map(async ({ node, catalog }) => {
-      const version = await manager.resolveCatalog(
+      const { version, versionPositionCommandUri } = await manager.resolveCatalog(
         doc.value!,
         (node.key as StringLiteral).value,
         catalog,
-      )
+      ) || {}
       if (!version)
         return
 
       const md = new MarkdownString()
       md.appendMarkdown([
         `- PNPM Catalog: \`${catalog}\``,
-        `- Version: \`${version}\``,
+        versionPositionCommandUri ? `- Version: [${version}](${versionPositionCommandUri})` : `- Version: \`${version}\``,
       ].join('\n'))
       md.isTrusted = true
 
@@ -205,6 +207,19 @@ const { activate, deactivate } = defineExtension(() => {
   useCommand(
     commands.toggle,
     () => config.$update('enabled', !config.enabled, ConfigurationTarget.Global),
+  )
+
+  useCommand(
+    commands.gotoDefinition,
+    ({ workspacePath, versionPosition }: JumpLocationParams) => {
+      executeCommand(
+        'editor.action.goToLocations',
+        Uri.file(workspacePath),
+        new Position(versionPosition.line - 1, versionPosition.column - 1),
+        [],
+        'goto',
+      )
+    },
   )
 })
 
