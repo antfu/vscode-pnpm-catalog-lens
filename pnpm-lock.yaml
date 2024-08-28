@@ -44,15 +44,6 @@ importers:
       '@vscode/vsce':
         specifier: ^3.0.0
         version: 3.0.0
-      acorn:
-        specifier: ^8.12.1
-        version: 8.12.1
-      acorn-loose:
-        specifier: ^8.4.0
-        version: 8.4.0
-      acorn-walk:
-        specifier: ^8.3.3
-        version: 8.3.3
       bumpp:
         specifier: ^9.5.2
         version: 9.5.2
@@ -1200,14 +1191,6 @@ packages:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
     peerDependencies:
       acorn: ^6.0.0 || ^7.0.0 || ^8.0.0
-
-  acorn-loose@8.4.0:
-    resolution: {integrity: sha512-M0EUka6rb+QC4l9Z3T0nJEzNOO7JcoJlYMrBlyBCiFSXRyxjLKayd4TbQs2FDRWQU1h9FR7QVNHt+PEaoNL5rQ==}
-    engines: {node: '>=0.4.0'}
-
-  acorn-walk@8.3.3:
-    resolution: {integrity: sha512-MxXdReSRhGO7VlFe1bRG/oI7/mdLV9B9JJT0N8vZOhF7gFRR5l3M8W9G8JxmKV+JC5mGqJ0QvqfSOLsCPa4nUw==}
-    engines: {node: '>=0.4.0'}
 
   acorn@8.12.1:
     resolution: {integrity: sha512-tcpGyI9zbizT9JbV6oYE477V6mTlXvvi0T0G3SNIYE2apm/G5huBa1+K89VGeovbg+jycCrfhl3ADxErOuO6Jg==}
@@ -4338,14 +4321,6 @@ snapshots:
   '@vue/shared@3.4.27': {}
 
   acorn-jsx@5.3.2(acorn@8.12.1):
-    dependencies:
-      acorn: 8.12.1
-
-  acorn-loose@8.4.0:
-    dependencies:
-      acorn: 8.12.1
-
-  acorn-walk@8.3.3:
     dependencies:
       acorn: 8.12.1
 
