@@ -1,3 +1,4 @@
+import { basename } from 'node:path'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import type { DecorationOptions, Selection } from 'vscode'
 import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
@@ -30,8 +31,10 @@ const { activate, deactivate } = defineExtension(() => {
     track(tick)
     if (!editor.value || !editor.value.document)
       return
-    if (!editor.value.document.fileName.match(/\/package\.json/))
+    const fileName = editor.value.document.fileName
+    if (basename(fileName) !== 'package.json')
       return
+    logger.info('Processing package.json:', fileName)
     return editor.value.document
   })
 
@@ -116,11 +119,13 @@ const { activate, deactivate } = defineExtension(() => {
 
   watchEffect(async () => {
     if (!config.enabled || !editor.value || !doc.value || editor.value?.document !== doc.value) {
+      logger.info('Skipping decoration update: conditions not met')
       decorationsOverride.value = []
       decorationsHover.value = []
       return
     }
 
+    logger.info('Updating decorations for:', doc.value.fileName)
     const offset = parsed.value?.offset || 0
     const props = properties.value
     const _selections = selections.value
