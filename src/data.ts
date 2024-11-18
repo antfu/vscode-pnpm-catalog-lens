@@ -1,11 +1,12 @@
-import { findUp } from 'find-up'
-import { type TextDocument, Uri, workspace } from 'vscode'
-import YAML from 'js-yaml'
-import { parseYAML } from 'yaml-eslint-parser'
+import type { TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
-import { logger } from './utils'
+import { findUp } from 'find-up'
+import YAML from 'js-yaml'
+import { Uri, workspace } from 'vscode'
+import { parseYAML } from 'yaml-eslint-parser'
 import { workspaceFileName } from './constants'
 import { commands } from './generated/meta'
+import { logger } from './utils'
 
 export interface PnpmWorkspacData {
   catalog?: Record<string, string>

@@ -1,17 +1,18 @@
-import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
+import type { ObjectProperty, StringLiteral } from '@babel/types'
 import type { DecorationOptions, Selection } from 'vscode'
-import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import type { JumpLocationParams } from './data'
+
 import { parseSync } from '@babel/core'
 import traverse from '@babel/traverse'
+import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
+import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
-import type { ObjectProperty, StringLiteral } from '@babel/types'
-import { logger } from './utils'
 import { config } from './config'
-import { commands } from './generated/meta'
-import type { JumpLocationParams } from './data'
-import { PnpmWorkspaceManager } from './data'
 import { catalogPrefix } from './constants'
+import { PnpmWorkspaceManager } from './data'
+import { commands } from './generated/meta'
+import { logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new PnpmWorkspaceManager()
