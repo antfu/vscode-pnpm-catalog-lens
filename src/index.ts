@@ -116,13 +116,11 @@ const { activate, deactivate } = defineExtension(() => {
 
   watchEffect(async () => {
     if (!config.enabled || !editor.value || !doc.value || editor.value?.document !== doc.value) {
-      logger.info('Skipping decoration update: conditions not met')
       decorationsOverride.value = []
       decorationsHover.value = []
       return
     }
 
-    logger.info('Updating decorations for:', doc.value.fileName)
     const offset = parsed.value?.offset || 0
     const props = properties.value
     const _selections = selections.value
