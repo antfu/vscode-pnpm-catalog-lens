@@ -1,4 +1,3 @@
-import { basename } from 'node:path'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import type { DecorationOptions, Selection } from 'vscode'
 import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
@@ -31,10 +30,8 @@ const { activate, deactivate } = defineExtension(() => {
     track(tick)
     if (!editor.value || !editor.value.document)
       return
-    const fileName = editor.value.document.fileName
-    if (basename(fileName) !== 'package.json')
+    if (!editor.value.document.fileName.match(/[\\/]package\.json$/))
       return
-    logger.info('Processing package.json:', fileName)
     return editor.value.document
   })
 
