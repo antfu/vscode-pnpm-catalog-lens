@@ -1,11 +1,10 @@
-import type { TextDocument } from 'vscode'
+import type { Location, TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
 import { findUp } from 'find-up'
 import YAML from 'js-yaml'
-import { Uri, workspace } from 'vscode'
+import { Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
 import { workspaceFileName } from './constants'
-import { commands } from './generated/meta'
 import { logger } from './utils'
 
 export interface PnpmWorkspacData {
@@ -14,8 +13,8 @@ export interface PnpmWorkspacData {
 }
 
 export interface PnpmWorkspacPositionData {
-  catalog: Record<string, AST.Position>
-  catalogs: Record<string, Record<string, AST.Position>>
+  catalog: Record<string, [AST.Position, AST.Position]>
+  catalogs: Record<string, Record<string, [AST.Position, AST.Position]>>
 }
 
 export interface JumpLocationParams {
@@ -53,16 +52,16 @@ export class PnpmWorkspaceManager {
 
     const version = map[name]
 
-    const versionPosition = positionMap?.[name]
-    let versionPositionCommandUri
-    if (versionPosition) {
-      const args = [{ workspacePath, versionPosition } as JumpLocationParams]
-      versionPositionCommandUri = Uri.parse(
-        `command:${commands.gotoDefinition}?${encodeURIComponent(JSON.stringify(args))}`,
-      )
+    const versionRange = positionMap?.[name]
+    let definition: Location | undefined
+    if (versionRange) {
+      definition = {
+        uri: Uri.file(workspacePath),
+        range: new Range(versionRange[0].line - 1, versionRange[0].column, versionRange[1].line - 1, versionRange[1].column),
+      }
     }
 
-    return { version, versionPositionCommandUri }
+    return { version, definition }
   }
 
   private async findPnpmWorkspace(path: string) {
@@ -124,13 +123,18 @@ export class PnpmWorkspaceManager {
     const defaultCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalog')
     const namedCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalogs')
 
-    function setActualPosition(data: Record<string, AST.Position>, pairs: AST.YAMLPair[]) {
+    function setActualPosition(data: Record<string, [AST.Position, AST.Position]>, pairs: AST.YAMLPair[]) {
       pairs.forEach(({ key, value }) => {
         if (key?.type === 'YAMLScalar' && value?.type === 'YAMLScalar') {
           const line = value.loc.start.line
           const lineText = lines[line - 1]
-          const column = lineText.indexOf(value.value as unknown as string) + 1
-          data[key.value as unknown as string] = { line, column }
+          const column = lineText.indexOf(value.value as unknown as string)
+          const endLine = value.loc.end.line
+          const endColumn = column + (value.value as unknown as string).length
+          data[key.value as unknown as string] = [
+            { line, column },
+            { line: endLine, column: endColumn },
+          ]
         }
       })
     }
