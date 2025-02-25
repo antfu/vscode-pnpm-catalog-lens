@@ -5,14 +5,14 @@ import type { JumpLocationParams } from './data'
 import { parseSync } from '@babel/core'
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
 import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { logger } from './utils'
+import { getNodeRange, logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new PnpmWorkspaceManager()
@@ -130,13 +130,26 @@ const { activate, deactivate } = defineExtension(() => {
     const hovers: DecorationOptions[] = []
 
     await Promise.all(props.map(async ({ node, catalog }) => {
-      const { version, versionPositionCommandUri } = await manager.resolveCatalog(
+      const { version, definition } = await manager.resolveCatalog(
         doc.value!,
         (node.key as StringLiteral).value,
         catalog,
       ) || {}
       if (!version)
         return
+
+      let versionPositionCommandUri
+      if (definition) {
+        const args = [
+          {
+            workspacePath: definition.uri.fsPath,
+            versionPosition: { line: definition.range.start.line + 1, column: definition.range.start.character },
+          } satisfies JumpLocationParams,
+        ]
+        versionPositionCommandUri = Uri.parse(
+          `command:${commands.gotoDefinition}?${encodeURIComponent(JSON.stringify(args))}`,
+        )
+      }
 
       const md = new MarkdownString()
       md.appendMarkdown([
@@ -145,10 +158,7 @@ const { activate, deactivate } = defineExtension(() => {
       ].join('\n'))
       md.isTrusted = true
 
-      const range = new Range(
-        doc.value!.positionAt(node.value.start! + offset + 1),
-        doc.value!.positionAt(node.value.end! + offset - 1),
-      )
+      const range = getNodeRange(doc.value!, node, offset)
       let inSelection = false
       for (const selection of _selections) {
         if (selection.contains(range)) {
@@ -216,11 +226,35 @@ const { activate, deactivate } = defineExtension(() => {
       executeCommand(
         'editor.action.goToLocations',
         Uri.file(workspacePath),
-        new Position(versionPosition.line - 1, versionPosition.column - 1),
+        new Position(versionPosition.line - 1, versionPosition.column),
         [],
         'goto',
       )
     },
+  )
+
+  useDisposable(
+    languages.registerDefinitionProvider({ pattern: '**/package.json' }, {
+      async provideDefinition(document, position, token) {
+        if (doc.value?.fileName !== document.fileName)
+          return
+
+        const offset = parsed.value?.offset || 0
+        const selected = properties.value.find(prop => getNodeRange(doc.value!, prop.node, offset).contains(position))
+        if (!selected)
+          return
+
+        const { version, definition } = await manager.resolveCatalog(
+          doc.value!,
+          (selected.node.key as StringLiteral).value,
+          selected.catalog,
+        ) || {}
+        if (!version || token.isCancellationRequested)
+          return
+
+        return definition
+      },
+    }),
   )
 })
 
