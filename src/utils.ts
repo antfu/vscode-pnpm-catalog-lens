@@ -1,5 +1,6 @@
 /* eslint-disable no-sequences */
 /* eslint-disable ts/no-unused-expressions */
+/* eslint-disable style/max-statements-per-line */
 import type { ObjectProperty } from '@babel/types'
 import { useLogger } from 'reactive-vscode'
 import { Range, type TextDocument } from 'vscode'
