@@ -180,6 +180,11 @@ const { activate, deactivate } = defineExtension(() => {
         ),
         hoverMessage: md,
       })
+
+      const color = config.namedCatalogsColors
+        ? getCatalogColor(catalog === 'default' ? 'default' : `${catalog}-${config.namedCatalogsColorsSalt}`)
+        : getCatalogColor('default')
+
       if (!inSelection) {
         overrides.push({
           range,
@@ -187,13 +192,13 @@ const { activate, deactivate } = defineExtension(() => {
           renderOptions: {
             before: {
               contentText: version,
-              color: getCatalogColor(catalog),
-              backgroundColor: `${getCatalogColor(catalog)}20; border-radius: 0.2em; padding: 0 0.2em;`,
+              color,
+              backgroundColor: `${color}20; border-radius: 0.2em; padding: 0 0.2em;`,
             },
-            after: catalog !== 'default'
+            after: config.namedCatalogsLabel && catalog !== 'default'
               ? {
                   contentText: `${catalog}`,
-                  color: `${getCatalogColor(catalog)}cc; padding-left: 0.4em; font-size: 0.8em;`,
+                  color: `${color}cc; padding-left: 0.4em; font-size: 0.8em;`,
                 }
               : undefined,
           },

@@ -56,6 +56,21 @@
           "type": "boolean",
           "default": true,
           "description": "Enable inlay hints"
+        },
+        "pnpmCatalogLens.namedCatalogsColors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give each named catalog a unique color"
+        },
+        "pnpmCatalogLens.namedCatalogsColorsSalt": {
+          "type": "string",
+          "default": "pnpm-catalog-lens",
+          "description": "A random string to adding as the salt for the named catalogs colors"
+        },
+        "pnpmCatalogLens.namedCatalogsLabel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a small label for named catalog in the inlay hint"
         }
       }
     }
