@@ -12,7 +12,7 @@ import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { getNodeRange, logger } from './utils'
+import { getCatalogColor, getNodeRange, logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new PnpmWorkspaceManager()
@@ -130,6 +130,7 @@ const { activate, deactivate } = defineExtension(() => {
     const hovers: DecorationOptions[] = []
 
     await Promise.all(props.map(async ({ node, catalog }) => {
+      catalog = catalog || 'default'
       const { version, definition } = await manager.resolveCatalog(
         doc.value!,
         (node.key as StringLiteral).value,
@@ -184,9 +185,17 @@ const { activate, deactivate } = defineExtension(() => {
           range,
           hoverMessage: md,
           renderOptions: {
-            after: {
+            before: {
               contentText: version,
+              color: getCatalogColor(catalog),
+              backgroundColor: `${getCatalogColor(catalog)}20; border-radius: 0.2em; padding: 0 0.2em;`,
             },
+            after: catalog !== 'default'
+              ? {
+                  contentText: `${catalog}`,
+                  color: `${getCatalogColor(catalog)}cc; padding-left: 0.4em; font-size: 0.8em;`,
+                }
+              : undefined,
           },
         })
       }
@@ -201,10 +210,6 @@ const { activate, deactivate } = defineExtension(() => {
     editor,
     {
       opacity: '0; display: none;',
-      after: {
-        color: '#f69220',
-        backgroundColor: '#f6922020; border-radius: 0.2em; padding: 0 0.2em;',
-      },
     },
     decorationsOverride,
   )
