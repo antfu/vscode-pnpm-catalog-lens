@@ -35,6 +35,7 @@ function hslToHex(h: number, s: number, l: number) {
 }
 
 function hslToRgb(h: number, s: number, l: number) {
+  h = h % 360
   h /= 360
   s /= 100
   l /= 100
