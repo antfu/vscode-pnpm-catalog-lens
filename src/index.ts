@@ -188,7 +188,6 @@ const { activate, deactivate } = defineExtension(() => {
       if (!inSelection) {
         overrides.push({
           range,
-          hoverMessage: md,
           renderOptions: {
             before: {
               contentText: version,
