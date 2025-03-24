@@ -3,11 +3,11 @@ import type { DecorationOptions, Selection } from 'vscode'
 import type { JumpLocationParams } from './data'
 
 import { parseSync } from '@babel/core'
+// @ts-expect-error missing types
+import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
-// @ts-expect-error missing types
-import preset from '@babel/preset-typescript'
 import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'

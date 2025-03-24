@@ -1,6 +1,7 @@
 import type { ObjectProperty } from '@babel/types'
+import type { TextDocument } from 'vscode'
 import { useLogger } from 'reactive-vscode'
-import { Range, type TextDocument } from 'vscode'
+import { Range } from 'vscode'
 import { displayName } from './generated/meta'
 
 export const logger = useLogger(displayName)
