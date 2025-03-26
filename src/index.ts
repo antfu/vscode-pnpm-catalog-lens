@@ -6,16 +6,22 @@ import { parseSync } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
+import { $fetch } from 'ofetch'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { getCatalogColor, getNodeRange, logger } from './utils'
+import { getNPMCommandPath } from './npm'
+import { fromNow, getCatalogColor, getNodeRange, logger } from './utils'
 
-const { activate, deactivate } = defineExtension(() => {
-  const manager = new PnpmWorkspaceManager()
+const { activate, deactivate } = defineExtension(async () => {
+  const npmCommandPath = await getNPMCommandPath()
+  const fetch = $fetch.create({
+    agent: 'PNPM Catalog Lens',
+  })
+  const manager = new PnpmWorkspaceManager(fetch, npmCommandPath)
 
   const editor = useActiveTextEditor()
   const tick = shallowRef(0)
@@ -33,7 +39,22 @@ const { activate, deactivate } = defineExtension(() => {
       return
     if (!editor.value.document.fileName.match(/[\\/]package\.json$/))
       return
-    return editor.value.document
+    const doc = editor.value.document
+    if (!doc)
+      return
+    return doc
+  })
+
+  const yamlDoc = computed(() => {
+    track(tick)
+    if (!editor.value || !editor.value.document)
+      return
+    if (!editor.value.document.fileName.match(/[\\/]pnpm-workspace\.yaml$/))
+      return
+    const yamlDoc = editor.value.document
+    if (!yamlDoc)
+      return
+    return yamlDoc
   })
 
   const text = useDocumentText(() => doc.value)
@@ -59,6 +80,32 @@ const { activate, deactivate } = defineExtension(() => {
           combined,
           {
             filename: doc.value?.uri.fsPath,
+            presets: [preset],
+            babelrc: false,
+          },
+        ),
+      }
+    }
+    catch (error) {
+      logger.error(error)
+    }
+  })
+
+  const parsedWorkspace = computed(async () => {
+    if (!yamlDoc.value)
+      return
+
+    const prefix = 'const x = '
+    const offset = -prefix.length
+    const combined = prefix + JSON.stringify(await manager.readPnpmWorkspace(yamlDoc.value!))
+
+    try {
+      return {
+        offset,
+        ast: parseSync(
+          combined,
+          {
+            filename: yamlDoc.value?.uri.fsPath,
             presets: [preset],
             babelrc: false,
           },
@@ -103,6 +150,56 @@ const { activate, deactivate } = defineExtension(() => {
     return items
   })
 
+  const yamlProperties = computed(async () => {
+    const pw = await parsedWorkspace.value
+
+    if (!pw?.ast)
+      return []
+
+    const items: {
+      node: ObjectProperty
+      pkg: string
+    }[] = []
+
+    const { ast } = pw
+
+    traverse(ast, {
+      ObjectProperty(path) {
+        // Check if the current property is inside a "catalog" object.
+        // path.findParent walks up the traversal chain.
+        const catalogParent = path.findParent((p) => {
+          // We are looking for an ObjectProperty with a StringLiteral key equal to "catalog".
+          if (p.isObjectProperty()) {
+            const key = p.node.key
+            // Ensure the key is a StringLiteral and its value equals "catalog".
+            return key.type === 'StringLiteral' && key.value === 'catalog'
+          }
+          return false
+        })
+
+        // Only continue if the property is a descendant of "catalog"
+        if (!catalogParent) {
+          return // Not inside a "catalog" property, skip.
+        }
+
+        const key = path.node.key
+        const value = path.node.value
+
+        if (key.type !== 'StringLiteral' || value.type !== 'StringLiteral') {
+          return
+        }
+
+        items.push({
+          node: path.node,
+          pkg: key.value,
+        })
+      },
+
+    })
+
+    return items
+  })
+
   const decorationsOverride = shallowRef<DecorationOptions[]>([])
   const decorationsHover = shallowRef<DecorationOptions[]>([])
 
@@ -114,6 +211,52 @@ const { activate, deactivate } = defineExtension(() => {
     else
       selections.value = e.selections
   }))
+
+  watchEffect(async () => {
+    if (!config.enabled || !editor.value || !yamlDoc.value || editor.value?.document !== yamlDoc.value) {
+      decorationsOverride.value = []
+      decorationsHover.value = []
+      return
+    }
+
+    const offset = (await parsedWorkspace.value)?.offset || 0
+    const props = await yamlProperties.value
+    const _selections = selections.value
+
+    const overrides: DecorationOptions[] = []
+    const hovers: DecorationOptions[] = []
+    const position = manager.readPnpmWorkspacePosition(yamlDoc.value!)
+
+    await Promise.all(props.map(async ({ node, pkg }) => {
+      const range = new Range(
+        yamlDoc.value!.positionAt(node.start! - 8),
+        yamlDoc.value!.positionAt(node.end! - 8),
+      )
+
+      const info = await manager.fetchPackageInfo(pkg, yamlDoc.value?.uri)
+
+      const str = new MarkdownString()
+      if (info?.description) {
+        str.appendText(info.description)
+      }
+      if (info?.version) {
+        str.appendText('\n\n')
+        str.appendText(info?.time ? `Latest version: ${info.version} published ${fromNow(Date.parse(info.time), true, true)}` : `Latest version: ${info.version}`)
+      }
+      if (info?.homepage) {
+        str.appendText('\n\n')
+        str.appendText(info.homepage)
+      }
+
+      hovers.push({
+        range,
+        hoverMessage: str,
+      })
+    }))
+
+    decorationsOverride.value = overrides
+    decorationsHover.value = hovers
+  })
 
   watchEffect(async () => {
     if (!config.enabled || !editor.value || !doc.value || editor.value?.document !== doc.value) {
@@ -205,9 +348,6 @@ const { activate, deactivate } = defineExtension(() => {
       }
     }),
     )
-
-    decorationsOverride.value = overrides
-    decorationsHover.value = hovers
   })
 
   useEditorDecorations(
