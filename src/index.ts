@@ -1,5 +1,5 @@
 import type { ObjectProperty, StringLiteral } from '@babel/types'
-import type { DecorationOptions, Selection, TextDocument } from 'vscode'
+import type { DecorationOptions, Selection } from 'vscode'
 import type { JumpLocationParams } from './data'
 import { parseSync } from '@babel/core'
 // @ts-expect-error missing types
@@ -7,15 +7,15 @@ import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
 import { $fetch } from 'ofetch'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, Hover, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, Hover, l10n, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'
 import { commands } from './generated/meta'
 import { getNPMCommandPath } from './npm'
-import { fromNow, getCatalogColor, getNodeRange, logger } from './utils'
+import { fromNow, getCatalogColor, getNodeRange, logger, removeQuotes } from './utils'
 
-const { activate, deactivate } = defineExtension(async (context) => {
+const { activate, deactivate } = defineExtension(async () => {
   const npmCommandPath = await getNPMCommandPath()
   const fetch = $fetch.create({
     agent: 'PNPM Catalog Lens',
@@ -138,59 +138,6 @@ const { activate, deactivate } = defineExtension(async (context) => {
     else
       selections.value = e.selections
   }))
-
-  async function createHoverMessages(
-    position: { catalog: Record<string, { line: number, column: number }[]>, catalogs: Record<string, Record<string, { line: number, column: number }[]>> },
-    manager: PnpmWorkspaceManager,
-    yamlDoc: TextDocument,
-  ): Promise<DecorationOptions[]> {
-    const hovers: DecorationOptions[] = []
-
-    const addHoverMessage = async (pkg: string, pos: { line: number, column: number }[]) => {
-      const range = new Range(
-        new Position(pos[0].line, pos[0].column),
-        new Position(pos[1].line, pos[1].column),
-      )
-
-      const info = await manager.fetchPackageInfo(pkg, yamlDoc.uri)
-
-      const str = new MarkdownString()
-      if (info?.description) {
-        str.appendText(info.description)
-      }
-      if (info?.version) {
-        str.appendText('\n\n')
-        str.appendText(info?.time ? `Latest version: ${info.version} published ${fromNow(Date.parse(info.time), true, true)}` : `Latest version: ${info.version}`)
-      }
-      if (info?.homepage) {
-        str.appendText('\n\n')
-        str.appendText(info.homepage)
-      }
-
-      hovers.push({
-        range,
-        hoverMessage: str,
-      })
-    }
-
-    const promises = [
-      ...Object.entries(position.catalog).map(([pkg, pos]) => addHoverMessage(pkg, pos)),
-      ...Object.values(position.catalogs).flatMap(catalog => Object.entries(catalog).map(([pkg, pos]) => addHoverMessage(pkg, pos))),
-    ]
-
-    return Promise.all(promises).then(() => hovers)
-  }
-
-  watchEffect(async () => {
-    if (!config.enabled || !editor.value || !yamlDoc.value || editor.value?.document !== yamlDoc.value) {
-      decorationsOverride.value = []
-      decorationsHover.value = []
-      return
-    }
-
-    const position = manager.readPnpmWorkspaceFullPosition(yamlDoc.value!)
-    decorationsHover.value = await createHoverMessages(position, manager, yamlDoc.value!)
-  })
 
   watchEffect(async () => {
     if (!config.enabled || !editor.value || !doc.value || editor.value?.document !== doc.value) {
@@ -345,38 +292,62 @@ const { activate, deactivate } = defineExtension(async (context) => {
 
   useDisposable(
     languages.registerHoverProvider({ pattern: '**/pnpm-workspace.yaml' }, {
-      async provideHover(document, position, token) {
+      async provideHover(document, position) {
         const line = document.lineAt(position.line).text
-        // Find the colon that separates the key and value.
         const colonIndex = line.indexOf(':')
         if (colonIndex === -1) {
-        // Not a key-value line
           return
         }
 
-        let depName: string | undefined
-        let depVersion: string | undefined
+        const depName = removeQuotes(line.substring(0, colonIndex))
+        const depVersion = removeQuotes(line.substring(colonIndex + 1))
 
-        // Determine if the hover is over the key or the value.
-        if (position.character <= colonIndex) {
-          // User is hovering on the key.
-          // Extract the key text (trim whitespace)
-          depName = line.substring(0, colonIndex).trim()
-          // Also extract the value part from the same line, if available.
-          depVersion = line.substring(colonIndex + 1).trim()
+        if (!depName) {
+          return
         }
-        else {
-          // User is hovering on the value.
-          // Extract the value text
-          depVersion = line.substring(colonIndex + 1).trim()
-          // And extract the dependency name from before the colon.
-          depName = line.substring(0, colonIndex).trim()
-        }
-        console.log(depName, depVersion)
 
-        const markdown = new MarkdownString()
-        markdown.appendText('Hello')
-        return new Hover(markdown)
+        // Get the complete range from start of name to end of version
+        const startPosition = new Position(position.line, line.indexOf(depName))
+        const endPosition = new Position(
+          position.line,
+          depVersion ? line.indexOf(depVersion) + depVersion.length : colonIndex,
+        )
+        const range = new Range(startPosition, endPosition)
+
+        // Check if this is a dependency under catalog or catalogs section
+        const workspaceData = await manager.readPnpmWorkspace(document)
+        const isCatalogDependency = Object.keys(workspaceData.catalog || {}).includes(depName)
+          || Object.values(workspaceData.catalogs || {}).some(catalog => Object.keys(catalog).includes(depName))
+
+        if (!isCatalogDependency) {
+          return
+        }
+
+        const info = await manager.fetchPackageInfo(depName, yamlDoc.value?.uri)
+        if (!info) {
+          return
+        }
+
+        const str = new MarkdownString()
+
+        if (info.description) {
+          str.appendText(info.description)
+        }
+
+        if (info.version) {
+          str.appendText('\n\n')
+          const versionText = info.time
+            ? l10n.t('Latest version: {0} published {1}', info.version, fromNow(Date.parse(info.time), true, true))
+            : l10n.t('Latest version: {0}', info.version)
+          str.appendText(versionText)
+        }
+
+        if (info.homepage) {
+          str.appendText('\n\n')
+          str.appendText(info.homepage)
+        }
+
+        return new Hover(str, range)
       },
     }),
   )

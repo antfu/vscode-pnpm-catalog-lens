@@ -9,7 +9,7 @@ import YAML from 'js-yaml'
 import { Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
 import { workspaceFileName } from './constants'
-import { logger, normalizePosition } from './utils'
+import { logger } from './utils'
 
 export interface PnpmWorkspaceData {
   catalog?: Record<string, string>
@@ -176,70 +176,13 @@ export class PnpmWorkspaceManager {
     return data
   }
 
-  public readPnpmWorkspaceFullPosition(doc: TextDocument) {
-    if (this.positionDataMap.has(doc.uri.fsPath)) {
-      return this.positionDataMap.get(doc.uri.fsPath)!
-    }
-
-    const data: PnpmWorkspacePositionData = {
-      catalog: {},
-      catalogs: {},
-    }
-
-    const code = doc.getText()
-    const ast: AST.YAMLProgram = parseYAML(code)
-    const astBody = ast.body[0].content as AST.YAMLMapping
-    if (!astBody) {
-      return data
-    }
-
-    const defaultCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalog')
-    const namedCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalogs')
-
-    function setActualPosition(data: Record<string, [AST.Position, AST.Position]>, pairs: AST.YAMLPair[]) {
-      pairs.forEach(({ key, value }) => {
-        if (key?.type === 'YAMLScalar' && value?.type === 'YAMLScalar') {
-          const line = key.loc.start.line
-          const column = key.loc.start.column
-          const endLine = value.loc.end.line
-          const endColumn = value.loc.end.column
-          data[key.value as string] = [
-            normalizePosition({ line, column }),
-            normalizePosition({ line: endLine, column: endColumn }),
-          ]
-        }
-      })
-    }
-
-    try {
-      if (defaultCatalog?.value?.type === 'YAMLMapping') {
-        setActualPosition(data.catalog, defaultCatalog.value.pairs)
-      }
-
-      if (namedCatalog?.value?.type === 'YAMLMapping') {
-        namedCatalog.value.pairs.forEach(({ key, value }) => {
-          if (key?.type === 'YAMLScalar' && value?.type === 'YAMLMapping') {
-            const catalogName = key.value as unknown as string
-            data.catalogs[catalogName] = {}
-            setActualPosition(data.catalogs[catalogName], value.pairs)
-          }
-        })
-      }
-    }
-    catch (err: any) {
-      logger.error(`readPnpmWorkspacePosition error ${err.message}`)
-    }
-
-    this.positionDataMap.set(doc.uri.fsPath, data)
-
-    return data
-  }
-
   private onlineEnabled() {
+    // Original implementation from Microsoft/vscode packageJSONContribution.ts
     return !!workspace.getConfiguration('npm').get('fetchOnlinePackageInfo')
   }
 
   private isValidNPMName(name: string): boolean {
+    // Original implementation from Microsoft/vscode packageJSONContribution.ts
     // following rules from https://github.com/npm/validate-npm-package-name,
     // leading slash added as additional security measure
     if (!name || name.length > 214 || name.match(/^[-_.\s]/)) {
@@ -272,6 +215,7 @@ export class PnpmWorkspaceManager {
   }
 
   private npmView(npmCommandPath: string, pack: string, resource: Uri | undefined): Promise<ViewPackageInfo | undefined> {
+    // Original implementation from Microsoft/vscode packageJSONContribution.ts
     return new Promise((resolve) => {
       const args = ['view', '--json', '--', pack, 'description', 'dist-tags.latest', 'homepage', 'version', 'time']
       const cwd = resource && resource.scheme === 'file' ? dirname(resource.fsPath) : undefined
@@ -310,6 +254,7 @@ export class PnpmWorkspaceManager {
   }
 
   private async npmjsView(pack: string): Promise<ViewPackageInfo | undefined> {
+    // Original implementation from Microsoft/vscode packageJSONContribution.ts
     const queryUrl = `https://registry.npmjs.org/${encodeURIComponent(pack)}`
     try {
       const obj = await this.fetch(queryUrl)
@@ -321,9 +266,8 @@ export class PnpmWorkspaceManager {
         homepage: obj.homepage || '',
       }
     }
-    catch (e) {
+    catch {
       // ignore
-      console.error(e)
     }
     return undefined
   }
