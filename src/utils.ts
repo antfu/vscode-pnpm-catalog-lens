@@ -1,5 +1,6 @@
 import type { ObjectProperty } from '@babel/types'
-import type { TextDocument } from 'vscode'
+import type { Position, TextDocument } from 'vscode'
+import type { AST } from 'yaml-eslint-parser'
 import { useLogger } from 'reactive-vscode'
 import { l10n, Range } from 'vscode'
 import { displayName } from './generated/meta'
@@ -28,6 +29,16 @@ export function getCatalogColor(name: string) {
   const result = hslToHex(hue, saturation, lightness)
   catalogColors.set(name, result)
   return result
+}
+
+/**
+ * Normalizes a position object by converting its 1-based line index into a 0-based index.
+ */
+export function normalizePosition(position: AST.Position) {
+  return {
+    line: position.line - 1,
+    column: position.column,
+  }
 }
 
 function hslToHex(h: number, s: number, l: number) {

@@ -1,7 +1,7 @@
 import type { ObjectProperty, StringLiteral } from '@babel/types'
 import type { DecorationOptions, Selection } from 'vscode'
-import type { JumpLocationParams } from './data'
 
+import type { JumpLocationParams } from './data'
 import { parseSync } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
@@ -91,32 +91,6 @@ const { activate, deactivate } = defineExtension(async () => {
     }
   })
 
-  const parsedWorkspace = computed(async () => {
-    if (!yamlDoc.value)
-      return
-
-    const prefix = 'const x = '
-    const offset = -prefix.length
-    const combined = prefix + JSON.stringify(await manager.readPnpmWorkspace(yamlDoc.value!))
-
-    try {
-      return {
-        offset,
-        ast: parseSync(
-          combined,
-          {
-            filename: yamlDoc.value?.uri.fsPath,
-            presets: [preset],
-            babelrc: false,
-          },
-        ),
-      }
-    }
-    catch (error) {
-      logger.error(error)
-    }
-  })
-
   const properties = computed(() => {
     if (!parsed.value?.ast)
       return []
@@ -150,56 +124,6 @@ const { activate, deactivate } = defineExtension(async () => {
     return items
   })
 
-  const yamlProperties = computed(async () => {
-    const pw = await parsedWorkspace.value
-
-    if (!pw?.ast)
-      return []
-
-    const items: {
-      node: ObjectProperty
-      pkg: string
-    }[] = []
-
-    const { ast } = pw
-
-    traverse(ast, {
-      ObjectProperty(path) {
-        // Check if the current property is inside a "catalog" object.
-        // path.findParent walks up the traversal chain.
-        const catalogParent = path.findParent((p) => {
-          // We are looking for an ObjectProperty with a StringLiteral key equal to "catalog".
-          if (p.isObjectProperty()) {
-            const key = p.node.key
-            // Ensure the key is a StringLiteral and its value equals "catalog".
-            return key.type === 'StringLiteral' && key.value === 'catalog'
-          }
-          return false
-        })
-
-        // Only continue if the property is a descendant of "catalog"
-        if (!catalogParent) {
-          return // Not inside a "catalog" property, skip.
-        }
-
-        const key = path.node.key
-        const value = path.node.value
-
-        if (key.type !== 'StringLiteral' || value.type !== 'StringLiteral') {
-          return
-        }
-
-        items.push({
-          node: path.node,
-          pkg: key.value,
-        })
-      },
-
-    })
-
-    return items
-  })
-
   const decorationsOverride = shallowRef<DecorationOptions[]>([])
   const decorationsHover = shallowRef<DecorationOptions[]>([])
 
@@ -219,18 +143,19 @@ const { activate, deactivate } = defineExtension(async () => {
       return
     }
 
-    const offset = (await parsedWorkspace.value)?.offset || 0
-    const props = await yamlProperties.value
-    const _selections = selections.value
-
-    const overrides: DecorationOptions[] = []
     const hovers: DecorationOptions[] = []
-    const position = manager.readPnpmWorkspacePosition(yamlDoc.value!)
+    const position = manager.readPnpmWorkspaceFullPosition(yamlDoc.value!)
 
-    await Promise.all(props.map(async ({ node, pkg }) => {
+    await Promise.all(Object.entries(position.catalog).map(async ([pkg, pos]) => {
       const range = new Range(
-        yamlDoc.value!.positionAt(node.start! - 8),
-        yamlDoc.value!.positionAt(node.end! - 8),
+        new Position(
+          pos[0].line,
+          pos[0].column,
+        ),
+        new Position(
+          pos[1].line,
+          pos[1].column,
+        ),
       )
 
       const info = await manager.fetchPackageInfo(pkg, yamlDoc.value?.uri)
@@ -254,7 +179,39 @@ const { activate, deactivate } = defineExtension(async () => {
       })
     }))
 
-    decorationsOverride.value = overrides
+    await Promise.all((Object.values(position.catalogs)).flatMap(catalog => Object.entries(catalog)).map(async ([pkg, pos]) => {
+      const range = new Range(
+        new Position(
+          pos[0].line,
+          pos[0].column,
+        ),
+        new Position(
+          pos[1].line,
+          pos[1].column,
+        ),
+      )
+
+      const info = await manager.fetchPackageInfo(pkg, yamlDoc.value?.uri)
+
+      const str = new MarkdownString()
+      if (info?.description) {
+        str.appendText(info.description)
+      }
+      if (info?.version) {
+        str.appendText('\n\n')
+        str.appendText(info?.time ? `Latest version: ${info.version} published ${fromNow(Date.parse(info.time), true, true)}` : `Latest version: ${info.version}`)
+      }
+      if (info?.homepage) {
+        str.appendText('\n\n')
+        str.appendText(info.homepage)
+      }
+
+      hovers.push({
+        range,
+        hoverMessage: str,
+      })
+    }))
+
     decorationsHover.value = hovers
   })
 
@@ -348,6 +305,9 @@ const { activate, deactivate } = defineExtension(async () => {
       }
     }),
     )
+
+    decorationsOverride.value = overrides
+    decorationsHover.value = hovers
   })
 
   useEditorDecorations(

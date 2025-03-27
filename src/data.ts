@@ -9,14 +9,14 @@ import YAML from 'js-yaml'
 import { Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
 import { workspaceFileName } from './constants'
-import { logger } from './utils'
+import { logger, normalizePosition } from './utils'
 
-export interface PnpmWorkspacData {
+export interface PnpmWorkspaceData {
   catalog?: Record<string, string>
   catalogs?: Record<string, Record<string, string>>
 }
 
-export interface PnpmWorkspacPositionData {
+export interface PnpmWorkspacePositionData {
   catalog: Record<string, [AST.Position, AST.Position]>
   catalogs: Record<string, Record<string, [AST.Position, AST.Position]>>
 }
@@ -34,9 +34,9 @@ export interface ViewPackageInfo {
 }
 
 export class PnpmWorkspaceManager {
-  private dataMap = new Map<string, PnpmWorkspacData>()
+  private dataMap = new Map<string, PnpmWorkspaceData>()
   private findUpCache = new Map<string, string>()
-  private positionDataMap = new Map<string, PnpmWorkspacPositionData>()
+  private positionDataMap = new Map<string, PnpmWorkspacePositionData>()
 
   constructor(private fetch: $Fetch, private npmCommandPath: string | undefined) {}
 
@@ -96,14 +96,14 @@ export class PnpmWorkspaceManager {
     return file
   }
 
-  public async readPnpmWorkspace(doc: TextDocument | Uri): Promise<PnpmWorkspacData> {
+  public async readPnpmWorkspace(doc: TextDocument | Uri): Promise<PnpmWorkspaceData> {
     if (doc instanceof Uri) {
       doc = await workspace.openTextDocument(doc)
     }
     if (this.dataMap.has(doc.uri.fsPath)) {
       return this.dataMap.get(doc.uri.fsPath)!
     }
-    const data = YAML.load(doc.getText()) as PnpmWorkspacData
+    const data = YAML.load(doc.getText()) as PnpmWorkspaceData
     this.dataMap.set(doc.uri.fsPath, data)
     const disposable = workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.fsPath === doc.uri.fsPath) {
@@ -115,12 +115,12 @@ export class PnpmWorkspaceManager {
     return data
   }
 
-  public readPnpmWorkspacePosition(doc: TextDocument) {
+  private readPnpmWorkspacePosition(doc: TextDocument) {
     if (this.positionDataMap.has(doc.uri.fsPath)) {
       return this.positionDataMap.get(doc.uri.fsPath)!
     }
 
-    const data: PnpmWorkspacPositionData = {
+    const data: PnpmWorkspacePositionData = {
       catalog: {},
       catalogs: {},
     }
@@ -147,6 +147,65 @@ export class PnpmWorkspaceManager {
           data[key.value as unknown as string] = [
             { line, column },
             { line: endLine, column: endColumn },
+          ]
+        }
+      })
+    }
+
+    try {
+      if (defaultCatalog?.value?.type === 'YAMLMapping') {
+        setActualPosition(data.catalog, defaultCatalog.value.pairs)
+      }
+
+      if (namedCatalog?.value?.type === 'YAMLMapping') {
+        namedCatalog.value.pairs.forEach(({ key, value }) => {
+          if (key?.type === 'YAMLScalar' && value?.type === 'YAMLMapping') {
+            const catalogName = key.value as unknown as string
+            data.catalogs[catalogName] = {}
+            setActualPosition(data.catalogs[catalogName], value.pairs)
+          }
+        })
+      }
+    }
+    catch (err: any) {
+      logger.error(`readPnpmWorkspacePosition error ${err.message}`)
+    }
+
+    this.positionDataMap.set(doc.uri.fsPath, data)
+
+    return data
+  }
+
+  public readPnpmWorkspaceFullPosition(doc: TextDocument) {
+    if (this.positionDataMap.has(doc.uri.fsPath)) {
+      return this.positionDataMap.get(doc.uri.fsPath)!
+    }
+
+    const data: PnpmWorkspacePositionData = {
+      catalog: {},
+      catalogs: {},
+    }
+
+    const code = doc.getText()
+    const ast: AST.YAMLProgram = parseYAML(code)
+    const astBody = ast.body[0].content as AST.YAMLMapping
+    if (!astBody) {
+      return data
+    }
+
+    const defaultCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalog')
+    const namedCatalog = astBody.pairs.find(pair => pair.key?.type === 'YAMLScalar' && pair.key.value === 'catalogs')
+
+    function setActualPosition(data: Record<string, [AST.Position, AST.Position]>, pairs: AST.YAMLPair[]) {
+      pairs.forEach(({ key, value }) => {
+        if (key?.type === 'YAMLScalar' && value?.type === 'YAMLScalar') {
+          const line = key.loc.start.line
+          const column = key.loc.start.column
+          const endLine = value.loc.end.line
+          const endColumn = value.loc.end.column
+          data[key.value as string] = [
+            normalizePosition({ line, column }),
+            normalizePosition({ line: endLine, column: endColumn }),
           ]
         }
       })
