@@ -38,10 +38,7 @@ const { activate, deactivate } = defineExtension(async () => {
       return
     if (!editor.value.document.fileName.match(/[\\/]package\.json$/))
       return
-    const doc = editor.value.document
-    if (!doc)
-      return
-    return doc
+    return editor.value.document
   })
 
   const yamlDoc = computed(() => {
@@ -50,10 +47,7 @@ const { activate, deactivate } = defineExtension(async () => {
       return
     if (!editor.value.document.fileName.match(/[\\/]pnpm-workspace\.yaml$/))
       return
-    const yamlDoc = editor.value.document
-    if (!yamlDoc)
-      return
-    return yamlDoc
+    return editor.value.document
   })
 
   const text = useDocumentText(() => doc.value)
@@ -86,11 +80,7 @@ const { activate, deactivate } = defineExtension(async () => {
       }
     }
     catch (error) {
-      logger.error('Error parsing document:', error)
-      return {
-        offset,
-        ast: null,
-      }
+      logger.error(error)
     }
   })
 
