@@ -77,6 +77,39 @@ export class PnpmWorkspaceManager {
     return { version, definition }
   }
 
+  async readPnpmWorkspace(doc: TextDocument | Uri): Promise<PnpmWorkspaceData> {
+    if (doc instanceof Uri) {
+      doc = await workspace.openTextDocument(doc)
+    }
+    if (this.dataMap.has(doc.uri.fsPath)) {
+      return this.dataMap.get(doc.uri.fsPath)!
+    }
+    const data = YAML.load(doc.getText()) as PnpmWorkspaceData
+    this.dataMap.set(doc.uri.fsPath, data)
+    const disposable = workspace.onDidChangeTextDocument((e) => {
+      if (e.document.uri.fsPath === doc.uri.fsPath) {
+        this.dataMap.delete(doc.uri.fsPath)
+        disposable.dispose()
+      }
+    })
+
+    return data
+  }
+
+  async fetchPackageInfo(pack: string, resource: Uri | undefined): Promise<ViewPackageInfo | undefined> {
+    if (!this.isValidNPMName(pack)) {
+      return undefined // avoid unnecessary lookups
+    }
+    let info: ViewPackageInfo | undefined
+    if (this.npmCommandPath) {
+      info = await this.npmView(this.npmCommandPath, pack, resource)
+    }
+    if (!info && this.onlineEnabled()) {
+      info = await this.npmjsView(pack)
+    }
+    return info
+  }
+
   private async findPnpmWorkspace(path: string) {
     if (this.findUpCache.has(path)) {
       return this.findUpCache.get(path)
@@ -94,25 +127,6 @@ export class PnpmWorkspaceManager {
 
     this.findUpCache.set(path, file)
     return file
-  }
-
-  public async readPnpmWorkspace(doc: TextDocument | Uri): Promise<PnpmWorkspaceData> {
-    if (doc instanceof Uri) {
-      doc = await workspace.openTextDocument(doc)
-    }
-    if (this.dataMap.has(doc.uri.fsPath)) {
-      return this.dataMap.get(doc.uri.fsPath)!
-    }
-    const data = YAML.load(doc.getText()) as PnpmWorkspaceData
-    this.dataMap.set(doc.uri.fsPath, data)
-    const disposable = workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.fsPath === doc.uri.fsPath) {
-        this.dataMap.delete(doc.uri.fsPath)
-        disposable.dispose()
-      }
-    })
-
-    return data
   }
 
   private readPnpmWorkspacePosition(doc: TextDocument) {
@@ -198,20 +212,6 @@ export class PnpmWorkspaceManager {
       return encodeURIComponent(name) === name
     }
     return false
-  }
-
-  public async fetchPackageInfo(pack: string, resource: Uri | undefined): Promise<ViewPackageInfo | undefined> {
-    if (!this.isValidNPMName(pack)) {
-      return undefined // avoid unnecessary lookups
-    }
-    let info: ViewPackageInfo | undefined
-    if (this.npmCommandPath) {
-      info = await this.npmView(this.npmCommandPath, pack, resource)
-    }
-    if (!info && this.onlineEnabled()) {
-      info = await this.npmjsView(pack)
-    }
-    return info
   }
 
   private npmView(npmCommandPath: string, pack: string, resource: Uri | undefined): Promise<ViewPackageInfo | undefined> {
