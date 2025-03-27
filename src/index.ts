@@ -1,21 +1,26 @@
 import type { ObjectProperty, StringLiteral } from '@babel/types'
 import type { DecorationOptions, Selection } from 'vscode'
 import type { JumpLocationParams } from './data'
-
 import { parseSync } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
+import { $fetch } from 'ofetch'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, Hover, l10n, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config } from './config'
 import { catalogPrefix } from './constants'
 import { PnpmWorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { getCatalogColor, getNodeRange, logger } from './utils'
+import { getNPMCommandPath } from './npm'
+import { fromNow, getCatalogColor, getNodeRange, logger, removeQuotes } from './utils'
 
-const { activate, deactivate } = defineExtension(() => {
-  const manager = new PnpmWorkspaceManager()
+const { activate, deactivate } = defineExtension(async () => {
+  const npmCommandPath = await getNPMCommandPath()
+  const fetch = $fetch.create({
+    agent: 'PNPM Catalog Lens',
+  })
+  const manager = new PnpmWorkspaceManager(fetch, npmCommandPath)
 
   const editor = useActiveTextEditor()
   const tick = shallowRef(0)
@@ -32,6 +37,15 @@ const { activate, deactivate } = defineExtension(() => {
     if (!editor.value || !editor.value.document)
       return
     if (!editor.value.document.fileName.match(/[\\/]package\.json$/))
+      return
+    return editor.value.document
+  })
+
+  const yamlDoc = computed(() => {
+    track(tick)
+    if (!editor.value || !editor.value.document)
+      return
+    if (!editor.value.document.fileName.match(/[\\/]pnpm-workspace\.yaml$/))
       return
     return editor.value.document
   })
@@ -262,6 +276,68 @@ const { activate, deactivate } = defineExtension(() => {
           return
 
         return definition
+      },
+    }),
+  )
+
+  useDisposable(
+    languages.registerHoverProvider({ pattern: '**/pnpm-workspace.yaml' }, {
+      async provideHover(document, position) {
+        const line = document.lineAt(position.line).text
+        const colonIndex = line.indexOf(':')
+        if (colonIndex === -1) {
+          return
+        }
+
+        const depName = removeQuotes(line.substring(0, colonIndex))
+        const depVersion = removeQuotes(line.substring(colonIndex + 1))
+
+        if (!depName) {
+          return
+        }
+
+        // Get the complete range from start of name to end of version
+        const startPosition = new Position(position.line, line.indexOf(depName))
+        const endPosition = new Position(
+          position.line,
+          depVersion ? line.indexOf(depVersion) + depVersion.length : colonIndex,
+        )
+        const range = new Range(startPosition, endPosition)
+
+        // Check if this is a dependency under catalog or catalogs section
+        const workspaceData = await manager.readPnpmWorkspace(document)
+        const isCatalogDependency = Object.keys(workspaceData.catalog || {}).includes(depName)
+          || Object.values(workspaceData.catalogs || {}).some(catalog => Object.keys(catalog).includes(depName))
+
+        if (!isCatalogDependency) {
+          return
+        }
+
+        const info = await manager.fetchPackageInfo(depName, yamlDoc.value?.uri)
+        if (!info) {
+          return
+        }
+
+        const str = new MarkdownString()
+
+        if (info.description) {
+          str.appendText(info.description)
+        }
+
+        if (info.version) {
+          str.appendText('\n\n')
+          const versionText = info.time
+            ? l10n.t('Latest version: {0} published {1}', info.version, fromNow(Date.parse(info.time), true, true))
+            : l10n.t('Latest version: {0}', info.version)
+          str.appendText(versionText)
+        }
+
+        if (info.homepage) {
+          str.appendText('\n\n')
+          str.appendText(info.homepage)
+        }
+
+        return new Hover(str, range)
       },
     }),
   )
