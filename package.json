@@ -76,7 +76,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --external vscode",
+    "build": "tsdown src/index.ts --external vscode --format cjs",
     "dev": "nr build --watch",
     "prepare": "nr update",
     "update": "vscode-ext-gen --output src/generated/meta.ts --scope pnpmCatalogLens",
@@ -108,7 +108,7 @@
     "js-yaml": "^4.1.0",
     "pnpm": "^10.6.5",
     "reactive-vscode": "^0.2.13",
-    "tsup": "^8.4.0",
+    "tsdown": "^0.11.4",
     "typescript": "^5.8.2",
     "vite": "^6.2.2",
     "vitest": "^3.0.9",
