@@ -2,6 +2,7 @@ import type { ObjectProperty } from '@babel/types'
 import type { TextDocument } from 'vscode'
 import { useLogger } from 'reactive-vscode'
 import { Range } from 'vscode'
+import { config } from './config'
 import { displayName } from './generated/meta'
 
 export const logger = useLogger(displayName)
@@ -13,7 +14,7 @@ export function getNodeRange(doc: TextDocument, node: ObjectProperty, offset: nu
 }
 
 const catalogColors = new Map<string, string>()
-catalogColors.set('default', '#f69220')
+catalogColors.set('default', config.defaultCatalogColor)
 
 export function getCatalogColor(name: string) {
   if (catalogColors.has(name)) {

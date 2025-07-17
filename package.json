@@ -71,6 +71,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show a small label for named catalog in the inlay hint"
+        },
+        "pnpmCatalogLens.defaultCatalogColor": {
+          "type": "string",
+          "default": "#f69220",
+          "description": "The default color for the catalog inlay hints"
         }
       }
     }
