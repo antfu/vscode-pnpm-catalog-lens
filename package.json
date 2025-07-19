@@ -57,6 +57,11 @@
           "default": true,
           "description": "Enable inlay hints"
         },
+        "pnpmCatalogLens.hover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show dependency info on hover"
+        },
         "pnpmCatalogLens.namedCatalogsColors": {
           "type": "boolean",
           "default": true,
