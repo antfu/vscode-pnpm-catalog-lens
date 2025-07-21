@@ -207,7 +207,8 @@ const { activate, deactivate } = defineExtension(() => {
     )
 
     decorationsOverride.value = overrides
-    decorationsHover.value = hovers
+    if (config.hover)
+      decorationsHover.value = hovers
   })
 
   useEditorDecorations(
