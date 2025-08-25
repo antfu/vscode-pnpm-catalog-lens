@@ -2,7 +2,7 @@
   "publisher": "antfu",
   "name": "pnpm-catalog-lens",
   "displayName": "PNPM Catalog Lens",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "packageManager": "pnpm@10.15.0",
   "description": "Show inlay version for PNPM catalogs",
