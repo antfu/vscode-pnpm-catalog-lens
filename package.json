@@ -34,7 +34,8 @@
     "vscode": "^1.90.0"
   },
   "activationEvents": [
-    "workspaceContains:pnpm-workspace.yaml"
+    "workspaceContains:pnpm-workspace.yaml",
+    "workspaceContains:.yarnrc.yml"
   ],
   "contributes": {
     "commands": [

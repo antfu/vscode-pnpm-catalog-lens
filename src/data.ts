@@ -4,15 +4,15 @@ import { findUp } from 'find-up'
 import YAML from 'js-yaml'
 import { Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
-import { workspaceFileName } from './constants'
+import { WORKSPACE_FILES } from './constants'
 import { logger } from './utils'
 
-export interface PnpmWorkspacData {
+export interface WorkspaceData {
   catalog?: Record<string, string>
   catalogs?: Record<string, Record<string, string>>
 }
 
-export interface PnpmWorkspacPositionData {
+export interface WorkspacePositionData {
   catalog: Record<string, [AST.Position, AST.Position]>
   catalogs: Record<string, Record<string, [AST.Position, AST.Position]>>
 }
@@ -22,21 +22,26 @@ export interface JumpLocationParams {
   versionPosition: AST.Position
 }
 
-export class PnpmWorkspaceManager {
-  private dataMap = new Map<string, PnpmWorkspacData>()
-  private findUpCache = new Map<string, string>()
-  private positionDataMap = new Map<string, PnpmWorkspacPositionData>()
+export interface WorkspaceInfo {
+  path: string
+  manager: 'PNPM' | 'Yarn'
+}
+
+export class WorkspaceManager {
+  private dataMap = new Map<string, WorkspaceData>()
+  private findUpCache = new Map<string, WorkspaceInfo>()
+  private positionDataMap = new Map<string, WorkspacePositionData>()
 
   async resolveCatalog(doc: TextDocument, name: string, catalog: string) {
-    const workspacePath = await this.findPnpmWorkspace(doc.uri.fsPath)
-    if (!workspacePath) {
+    const workspaceInfo = await this.findWorkspace(doc.uri.fsPath)
+    if (!workspaceInfo) {
       return null
     }
 
-    const workspaceDoc = await workspace.openTextDocument(Uri.file(workspacePath))
+    const workspaceDoc = await workspace.openTextDocument(Uri.file(workspaceInfo.path))
 
-    const data = await this.readPnpmWorkspace(workspaceDoc)
-    const positionData = this.readPnpmWorkspacePosition(workspaceDoc)
+    const data = await this.readWorkspace(workspaceDoc)
+    const positionData = this.readWorkspacePosition(workspaceDoc)
 
     const map = catalog === 'default'
       ? (data.catalog || data.catalogs?.default)
@@ -56,41 +61,42 @@ export class PnpmWorkspaceManager {
     let definition: Location | undefined
     if (versionRange) {
       definition = {
-        uri: Uri.file(workspacePath),
+        uri: Uri.file(workspaceInfo.path),
         range: new Range(versionRange[0].line - 1, versionRange[0].column, versionRange[1].line - 1, versionRange[1].column),
       }
     }
 
-    return { version, definition }
+    return { version, definition, manager: workspaceInfo.manager }
   }
 
-  private async findPnpmWorkspace(path: string) {
+  private async findWorkspace(path: string): Promise<WorkspaceInfo | null> {
     if (this.findUpCache.has(path)) {
-      return this.findUpCache.get(path)
+      return this.findUpCache.get(path)!
     }
 
-    const file = await findUp(workspaceFileName, {
+    const file = await findUp([WORKSPACE_FILES.YARN, WORKSPACE_FILES.PNPM], {
       type: 'file',
       cwd: path,
     })
 
     if (!file) {
-      logger.error(`${workspaceFileName} not found in`, path)
+      logger.error(`No workspace file (${WORKSPACE_FILES.YARN} or ${WORKSPACE_FILES.PNPM}) found in`, path)
       return null
     }
 
-    this.findUpCache.set(path, file)
-    return file
+    const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'Yarn' : 'PNPM' }
+    this.findUpCache.set(path, workspaceInfo)
+    return workspaceInfo
   }
 
-  private async readPnpmWorkspace(doc: TextDocument | Uri): Promise<PnpmWorkspacData> {
+  private async readWorkspace(doc: TextDocument | Uri): Promise<WorkspaceData> {
     if (doc instanceof Uri) {
       doc = await workspace.openTextDocument(doc)
     }
     if (this.dataMap.has(doc.uri.fsPath)) {
       return this.dataMap.get(doc.uri.fsPath)!
     }
-    const data = YAML.load(doc.getText()) as PnpmWorkspacData
+    const data = YAML.load(doc.getText()) as WorkspaceData
     this.dataMap.set(doc.uri.fsPath, data)
     const disposable = workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.fsPath === doc.uri.fsPath) {
@@ -102,12 +108,12 @@ export class PnpmWorkspaceManager {
     return data
   }
 
-  private readPnpmWorkspacePosition(doc: TextDocument) {
+  private readWorkspacePosition(doc: TextDocument) {
     if (this.positionDataMap.has(doc.uri.fsPath)) {
       return this.positionDataMap.get(doc.uri.fsPath)!
     }
 
-    const data: PnpmWorkspacPositionData = {
+    const data: WorkspacePositionData = {
       catalog: {},
       catalogs: {},
     }
@@ -155,7 +161,7 @@ export class PnpmWorkspaceManager {
       }
     }
     catch (err: any) {
-      logger.error(`readPnpmWorkspacePosition error ${err.message}`)
+      logger.error(`readWorkspacePosition error ${err.message}`)
     }
 
     this.positionDataMap.set(doc.uri.fsPath, data)

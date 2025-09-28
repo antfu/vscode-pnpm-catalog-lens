@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">PNPM <code>catalog:</code> field.</a><br>
+Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">PNPM</a> and <a href="https://yarnpkg.com/features/catalogs" target="_blank">Yarn</a> <code>catalog:</code> fields.<br>
 </p>
 
 <p align="center">

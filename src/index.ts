@@ -10,12 +10,12 @@ import { computed, defineExtension, executeCommand, shallowRef, toValue as track
 import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config } from './config'
 import { catalogPrefix } from './constants'
-import { PnpmWorkspaceManager } from './data'
+import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
 import { getCatalogColor, getNodeRange, logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
-  const manager = new PnpmWorkspaceManager()
+  const manager = new WorkspaceManager()
 
   const editor = useActiveTextEditor()
   const tick = shallowRef(0)
@@ -131,7 +131,7 @@ const { activate, deactivate } = defineExtension(() => {
 
     await Promise.all(props.map(async ({ node, catalog }) => {
       catalog = catalog || 'default'
-      const { version, definition } = await manager.resolveCatalog(
+      const { version, definition, manager: packageManager } = await manager.resolveCatalog(
         doc.value!,
         (node.key as StringLiteral).value,
         catalog,
@@ -154,7 +154,7 @@ const { activate, deactivate } = defineExtension(() => {
 
       const md = new MarkdownString()
       md.appendMarkdown([
-        `- PNPM Catalog: \`${catalog}\``,
+        `- ${packageManager} Catalog: \`${catalog}\``,
         versionPositionCommandUri ? `- Version: [${version}](${versionPositionCommandUri})` : `- Version: \`${version}\``,
       ].join('\n'))
       md.isTrusted = true
