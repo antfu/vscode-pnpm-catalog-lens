@@ -248,18 +248,9 @@ export class WorkspaceManager {
       if (!ast)
         return
 
-      const lines = code.split('\n')
-
-      const extractJsonPositions = (
-        properties: (ObjectMethod | ObjectProperty | SpreadElement)[],
-        targetData: Record<string, [AST.Position, AST.Position]>,
-        lines: string[],
-        code: string,
-      ) => {
+      const setActualPosition = (properties: (ObjectMethod | ObjectProperty | SpreadElement)[], data: Record<string, [AST.Position, AST.Position]>, code: string) => {
         properties.forEach((prop) => {
-          if (prop.type === 'ObjectProperty'
-            && prop.key.type === 'StringLiteral'
-            && prop.value.type === 'StringLiteral') {
+          if (prop.type === 'ObjectProperty' && prop.key.type === 'StringLiteral' && prop.value.type === 'StringLiteral') {
             const packageName = prop.key.value
 
             const startPos = prop.value.start ? prop.value.start + offset : undefined
@@ -273,11 +264,7 @@ export class WorkspaceManager {
             const endLine = beforeEnd.split('\n').length
             const endColumn = beforeEnd.split('\n').pop()!.length
 
-            logger.info(`Package: ${packageName}`)
-            logger.info(`Start pos: ${startPos}, End pos: ${endPos}`)
-            logger.info(`Calculated position: line ${startLine}, col ${startColumn} to line ${endLine}, col ${endColumn}`)
-
-            targetData[packageName] = [
+            data[packageName] = [
               { line: startLine, column: startColumn + 1 },
               { line: endLine, column: endColumn - 1 },
             ]
@@ -295,16 +282,14 @@ export class WorkspaceManager {
               value.properties.forEach((prop) => {
                 if (prop.type === 'ObjectProperty' && prop.key.type === 'StringLiteral') {
                   if (prop.key.value === 'catalog' && prop.value.type === 'ObjectExpression') {
-                    extractJsonPositions(prop.value.properties, data.catalog, lines, code)
+                    setActualPosition(prop.value.properties, data.catalog, code)
                   }
                   else if (prop.key.value === 'catalogs' && prop.value.type === 'ObjectExpression') {
                     prop.value.properties.forEach((catalogProp) => {
-                      if (catalogProp.type === 'ObjectProperty'
-                        && catalogProp.key.type === 'StringLiteral'
-                        && catalogProp.value.type === 'ObjectExpression') {
+                      if (catalogProp.type === 'ObjectProperty' && catalogProp.key.type === 'StringLiteral' && catalogProp.value.type === 'ObjectExpression') {
                         const catalogName = catalogProp.key.value
                         data.catalogs[catalogName] = {}
-                        extractJsonPositions(catalogProp.value.properties, data.catalogs[catalogName], lines, code)
+                        setActualPosition(catalogProp.value.properties, data.catalogs[catalogName], code)
                       }
                     })
                   }
