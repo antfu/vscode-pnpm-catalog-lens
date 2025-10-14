@@ -1,10 +1,16 @@
+import type { ObjectMethod, ObjectProperty, SpreadElement } from '@babel/types'
 import type { Location, TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
+import type { PackageManager } from './types'
+import { dirname, join } from 'node:path'
+import { parseSync, traverse } from '@babel/core'
+// @ts-expect-error missing types
+import preset from '@babel/preset-typescript'
 import { findUp } from 'find-up'
 import YAML from 'js-yaml'
 import { Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
-import { WORKSPACE_FILES } from './constants'
+import { BUN_LOCKS, WORKSPACE_FILES } from './constants'
 import { logger } from './utils'
 
 export interface WorkspaceData {
@@ -24,7 +30,7 @@ export interface JumpLocationParams {
 
 export interface WorkspaceInfo {
   path: string
-  manager: 'PNPM' | 'Yarn'
+  manager: PackageManager
 }
 
 export class WorkspaceManager {
@@ -40,20 +46,22 @@ export class WorkspaceManager {
 
     const workspaceDoc = await workspace.openTextDocument(Uri.file(workspaceInfo.path))
 
-    const data = await this.readWorkspace(workspaceDoc)
-    const positionData = this.readWorkspacePosition(workspaceDoc)
+    const data = await this.readWorkspace(workspaceDoc, workspaceInfo.manager)
 
     const map = catalog === 'default'
       ? (data.catalog || data.catalogs?.default)
       : data.catalogs?.[catalog]
 
+    if (!map)
+      return null
+
+    const positionData = this.readWorkspacePosition(workspaceDoc)
+    if (!positionData)
+      return null
+
     const positionMap = catalog === 'default'
       ? (positionData.catalog || positionData.catalogs?.default)
       : positionData.catalogs?.[catalog]
-
-    if (!map) {
-      return null
-    }
 
     const version = map[name]
 
@@ -74,29 +82,59 @@ export class WorkspaceManager {
       return this.findUpCache.get(path)!
     }
 
+    // Get workspace folders to limit search scope
+    const workspaceFolders = workspace.workspaceFolders
+    let stopAt: string | undefined
+
+    if (workspaceFolders) {
+      // Find which workspace folder contains the current path
+      for (const folder of workspaceFolders) {
+        if (path.startsWith(folder.uri.fsPath)) {
+          stopAt = folder.uri.fsPath
+          break
+        }
+      }
+    }
+
+    // check if is pnpm or yarn workspace
     const file = await findUp([WORKSPACE_FILES.YARN, WORKSPACE_FILES.PNPM], {
       type: 'file',
       cwd: path,
+      stopAt,
     })
-
-    if (!file) {
-      logger.error(`No workspace file (${WORKSPACE_FILES.YARN} or ${WORKSPACE_FILES.PNPM}) found in`, path)
-      return null
+    logger.info(file)
+    if (file) {
+      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'yarn' : 'pnpm' }
+      this.findUpCache.set(path, workspaceInfo)
+      return workspaceInfo
     }
 
-    const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'Yarn' : 'PNPM' }
-    this.findUpCache.set(path, workspaceInfo)
-    return workspaceInfo
+    // check if is bun workspace
+    const bun = await findUp(BUN_LOCKS, {
+      type: 'file',
+      cwd: path,
+      stopAt,
+    })
+    if (bun) {
+      const filepath = join(dirname(bun), 'package.json')
+      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'bun' }
+      this.findUpCache.set(path, workspaceInfo)
+      return workspaceInfo
+    }
+
+    logger.error(`No workspace file (${WORKSPACE_FILES.YARN} or ${WORKSPACE_FILES.PNPM}) found in`, path)
+    return null
   }
 
-  private async readWorkspace(doc: TextDocument | Uri): Promise<WorkspaceData> {
+  private async readWorkspace(doc: TextDocument | Uri, manager: PackageManager): Promise<WorkspaceData> {
     if (doc instanceof Uri) {
       doc = await workspace.openTextDocument(doc)
     }
     if (this.dataMap.has(doc.uri.fsPath)) {
       return this.dataMap.get(doc.uri.fsPath)!
     }
-    const data = YAML.load(doc.getText()) as WorkspaceData
+    const data = await this.loadWorkspace(doc, manager)
+
     this.dataMap.set(doc.uri.fsPath, data)
     const disposable = workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.fsPath === doc.uri.fsPath) {
@@ -108,11 +146,32 @@ export class WorkspaceManager {
     return data
   }
 
+  private async loadWorkspace(doc: TextDocument, manager: PackageManager): Promise<WorkspaceData> {
+    if (manager === 'pnpm' || manager === 'yarn')
+      return YAML.load(doc.getText()) as WorkspaceData
+    if (manager === 'bun') {
+      try {
+        return JSON.parse(doc.getText()).workspaces || {} as WorkspaceData
+      }
+      catch {
+        // Safe guard
+      }
+    }
+    return {} as WorkspaceData
+  }
+
   private readWorkspacePosition(doc: TextDocument) {
     if (this.positionDataMap.has(doc.uri.fsPath)) {
       return this.positionDataMap.get(doc.uri.fsPath)!
     }
 
+    if (doc.uri.fsPath.endsWith('.json'))
+      return this.readJsonWorkspacePosition(doc)
+    else
+      return this.readYamlWorkspacePosition(doc)
+  }
+
+  private readYamlWorkspacePosition(doc: TextDocument) {
     const data: WorkspacePositionData = {
       catalog: {},
       catalogs: {},
@@ -161,7 +220,103 @@ export class WorkspaceManager {
       }
     }
     catch (err: any) {
-      logger.error(`readWorkspacePosition error ${err.message}`)
+      logger.error(`readYamlWorkspacePosition error ${err.message}`)
+    }
+
+    this.positionDataMap.set(doc.uri.fsPath, data)
+
+    return data
+  }
+
+  private readJsonWorkspacePosition(doc: TextDocument) {
+    const data: WorkspacePositionData = {
+      catalog: {},
+      catalogs: {},
+    }
+
+    const code = doc.getText()
+    const prefix = 'const x = '
+    const offset = -prefix.length
+    const combined = prefix + code
+
+    try {
+      const ast = parseSync(combined, {
+        filename: doc.uri.fsPath,
+        presets: [preset],
+        babelrc: false,
+      })
+      if (!ast)
+        return
+
+      const lines = code.split('\n')
+
+      const extractJsonPositions = (
+        properties: (ObjectMethod | ObjectProperty | SpreadElement)[],
+        targetData: Record<string, [AST.Position, AST.Position]>,
+        lines: string[],
+        code: string,
+      ) => {
+        properties.forEach((prop) => {
+          if (prop.type === 'ObjectProperty'
+            && prop.key.type === 'StringLiteral'
+            && prop.value.type === 'StringLiteral') {
+            const packageName = prop.key.value
+
+            const startPos = prop.value.start ? prop.value.start + offset : undefined
+            const endPos = prop.value.end ? prop.value.end + offset : undefined
+
+            const beforeStart = code.substring(0, startPos)
+            const beforeEnd = code.substring(0, endPos)
+
+            const startLine = beforeStart.split('\n').length
+            const startColumn = beforeStart.split('\n').pop()!.length
+            const endLine = beforeEnd.split('\n').length
+            const endColumn = beforeEnd.split('\n').pop()!.length
+
+            logger.info(`Package: ${packageName}`)
+            logger.info(`Start pos: ${startPos}, End pos: ${endPos}`)
+            logger.info(`Calculated position: line ${startLine}, col ${startColumn} to line ${endLine}, col ${endColumn}`)
+
+            targetData[packageName] = [
+              { line: startLine, column: startColumn + 1 },
+              { line: endLine, column: endColumn - 1 },
+            ]
+          }
+        })
+      }
+
+      traverse(ast, {
+        ObjectProperty(path) {
+          const key = path.node.key
+          const value = path.node.value
+
+          if (key.type === 'StringLiteral' && key.value === 'workspaces') {
+            if (value.type === 'ObjectExpression') {
+              value.properties.forEach((prop) => {
+                if (prop.type === 'ObjectProperty' && prop.key.type === 'StringLiteral') {
+                  if (prop.key.value === 'catalog' && prop.value.type === 'ObjectExpression') {
+                    extractJsonPositions(prop.value.properties, data.catalog, lines, code)
+                  }
+                  else if (prop.key.value === 'catalogs' && prop.value.type === 'ObjectExpression') {
+                    prop.value.properties.forEach((catalogProp) => {
+                      if (catalogProp.type === 'ObjectProperty'
+                        && catalogProp.key.type === 'StringLiteral'
+                        && catalogProp.value.type === 'ObjectExpression') {
+                        const catalogName = catalogProp.key.value
+                        data.catalogs[catalogName] = {}
+                        extractJsonPositions(catalogProp.value.properties, data.catalogs[catalogName], lines, code)
+                      }
+                    })
+                  }
+                }
+              })
+            }
+          }
+        },
+      })
+    }
+    catch (err: any) {
+      logger.error(`readJsonWorkspacePosition error ${err.message}`)
     }
 
     this.positionDataMap.set(doc.uri.fsPath, data)
