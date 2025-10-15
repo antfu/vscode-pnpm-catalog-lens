@@ -82,7 +82,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --external vscode --format cjs",
+    "build": "tsdown",
     "dev": "nr build --watch",
     "prepare": "nr update",
     "update": "vscode-ext-gen --output src/generated/meta.ts --scope pnpmCatalogLens",
