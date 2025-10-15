@@ -2,7 +2,7 @@
 <img src="https://github.com/antfu/vscode-pnpm-catalog-lens/blob/main/res/icon.png?raw=true" height="150">
 </p>
 
-<h1 align="center">PNPM Catalog Lens <sup>VS Code</sup></h1>
+<h1 align="center">Catalog Lens <sup>VS Code</sup></h1>
 
 <p align="center">
 <a href="https://marketplace.visualstudio.com/items?itemName=antfu.pnpm-catalog-lens" target="__blank"><img src="https://img.shields.io/visual-studio-marketplace/v/antfu.pnpm-catalog-lens.svg?color=eee&amp;label=VS%20Code%20Marketplace&logo=visual-studio-code" alt="Visual Studio Marketplace Version" /></a>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">PNPM</a> and <a href="https://yarnpkg.com/features/catalogs" target="_blank">Yarn</a> <code>catalog:</code> fields.<br>
+Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">pnpm</a> · <a href="https://yarnpkg.com/features/catalogs" target="_blank">yarn</a> · <a href="https://bun.sh/docs/install/catalogs" target="_blank">bun</a> <code>catalog:</code> fields.<br>
 </p>
 
 <p align="center">
