@@ -104,7 +104,7 @@ export class WorkspaceManager {
     })
     logger.info(file)
     if (file) {
-      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'yarn' : 'pnpm' }
+      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'Yarn' : 'PNPM' }
       this.findUpCache.set(path, workspaceInfo)
       return workspaceInfo
     }
@@ -117,7 +117,7 @@ export class WorkspaceManager {
     })
     if (bun) {
       const filepath = join(dirname(bun), 'package.json')
-      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'bun' }
+      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'Bun' }
       this.findUpCache.set(path, workspaceInfo)
       return workspaceInfo
     }
@@ -147,9 +147,9 @@ export class WorkspaceManager {
   }
 
   private async loadWorkspace(doc: TextDocument, manager: PackageManager): Promise<WorkspaceData> {
-    if (manager === 'pnpm' || manager === 'yarn')
+    if (manager === 'PNPM' || manager === 'Yarn')
       return YAML.load(doc.getText()) as WorkspaceData
-    if (manager === 'bun') {
+    if (manager === 'Bun') {
       try {
         return JSON.parse(doc.getText()).workspaces || {} as WorkspaceData
       }
