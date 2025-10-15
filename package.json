@@ -109,7 +109,7 @@
         },
         "pnpmCatalogLens.namedCatalogsColorsSalt": {
           "type": "string",
-          "default": "pnpm-catalog-lens",
+          "default": "catalog-lens",
           "description": "A random string to adding as the salt for the named catalogs colors"
         },
         "pnpmCatalogLens.namedCatalogsLabel": {
