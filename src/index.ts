@@ -8,8 +8,8 @@ import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
-import { config } from './config'
-import { catalogPrefix } from './constants'
+import { config, enabled, hover, namedCatalogsColors, namedCatalogsColorsSalt, namedCatalogsLabel } from './config'
+import { catalogPrefix, PACKAGE_MANAGERS_NAME } from './constants'
 import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
 import { getCatalogColor, getNodeRange, logger } from './utils'
@@ -116,7 +116,7 @@ const { activate, deactivate } = defineExtension(() => {
   }))
 
   watchEffect(async () => {
-    if (!config.enabled || !editor.value || !doc.value || editor.value?.document !== doc.value) {
+    if (!enabled() || !editor.value || !doc.value || editor.value?.document !== doc.value) {
       decorationsOverride.value = []
       decorationsHover.value = []
       return
@@ -154,7 +154,7 @@ const { activate, deactivate } = defineExtension(() => {
 
       const md = new MarkdownString()
       md.appendMarkdown([
-        `- ${packageManager} Catalog: \`${catalog}\``,
+        `- ${packageManager ? PACKAGE_MANAGERS_NAME[packageManager] : ''} Catalog: \`${catalog}\``,
         versionPositionCommandUri ? `- Version: [${version}](${versionPositionCommandUri})` : `- Version: \`${version}\``,
       ].join('\n'))
       md.isTrusted = true
@@ -181,8 +181,8 @@ const { activate, deactivate } = defineExtension(() => {
         hoverMessage: md,
       })
 
-      const color = config.namedCatalogsColors
-        ? getCatalogColor(catalog === 'default' ? 'default' : `${catalog}-${config.namedCatalogsColorsSalt}`)
+      const color = namedCatalogsColors()
+        ? getCatalogColor(catalog === 'default' ? 'default' : `${catalog}-${namedCatalogsColorsSalt()}`)
         : getCatalogColor('default')
 
       if (!inSelection) {
@@ -194,7 +194,7 @@ const { activate, deactivate } = defineExtension(() => {
               color,
               backgroundColor: `${color}20; border-radius: 0.2em; padding: 0 0.2em;`,
             },
-            after: config.namedCatalogsLabel && catalog !== 'default'
+            after: namedCatalogsLabel() && catalog !== 'default'
               ? {
                   contentText: `${catalog}`,
                   color: `${color}cc; padding-left: 0.4em; font-size: 0.8em;`,
@@ -207,7 +207,7 @@ const { activate, deactivate } = defineExtension(() => {
     )
 
     decorationsOverride.value = overrides
-    if (config.hover)
+    if (hover())
       decorationsHover.value = hovers
   })
 
@@ -225,23 +225,23 @@ const { activate, deactivate } = defineExtension(() => {
     decorationsHover,
   )
 
-  useCommand(
-    commands.toggle,
-    () => config.$update('enabled', !config.enabled, ConfigurationTarget.Global),
-  )
+  const toggleCommand = () => config.$update('enabled', !config.enabled, ConfigurationTarget.Global)
+  const gotoDefinitionCommand = ({ workspacePath, versionPosition }: JumpLocationParams) => {
+    executeCommand(
+      'editor.action.goToLocations',
+      Uri.file(workspacePath),
+      new Position(versionPosition.line - 1, versionPosition.column),
+      [],
+      'goto',
+    )
+  }
 
-  useCommand(
-    commands.gotoDefinition,
-    ({ workspacePath, versionPosition }: JumpLocationParams) => {
-      executeCommand(
-        'editor.action.goToLocations',
-        Uri.file(workspacePath),
-        new Position(versionPosition.line - 1, versionPosition.column),
-        [],
-        'goto',
-      )
-    },
-  )
+  useCommand(commands.toggle, toggleCommand)
+  useCommand(commands.gotoDefinition, gotoDefinitionCommand)
+
+  // Legacy commands for backward compatibility - will be removed in future versions
+  useCommand(commands.pnpmCatalogLensToggle, toggleCommand)
+  useCommand(commands.pnpmCatalogLensGotoDefinition, gotoDefinitionCommand)
 
   useDisposable(
     languages.registerDefinitionProvider({ pattern: '**/package.json' }, {

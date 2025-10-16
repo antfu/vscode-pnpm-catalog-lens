@@ -19,15 +19,23 @@ Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">pnpm
 
 ## Configs
 
+> [!IMPORTANT]
+> The `pnpmCatalogLens.*` configuration options are deprecated and will be removed in a future version. Please use `catalogLens.*` instead.
+
 <!-- configs -->
 
-| Key                                       | Description                                                         | Type      | Default               |
-| ----------------------------------------- | ------------------------------------------------------------------- | --------- | --------------------- |
-| `pnpmCatalogLens.enabled`                 | Enable inlay hints                                                  | `boolean` | `true`                |
-| `pnpmCatalogLens.hover`                   | Show dependency info on hover                                       | `boolean` | `true`                |
-| `pnpmCatalogLens.namedCatalogsColors`     | Give each named catalog a unique color                              | `boolean` | `true`                |
-| `pnpmCatalogLens.namedCatalogsColorsSalt` | A random string to adding as the salt for the named catalogs colors | `string`  | `"pnpm-catalog-lens"` |
-| `pnpmCatalogLens.namedCatalogsLabel`      | Show a small label for named catalog in the inlay hint              | `boolean` | `true`                |
+| Key                                       | Description                                                         | Type      | Default          |
+| ----------------------------------------- | ------------------------------------------------------------------- | --------- | ---------------- |
+| `catalogLens.enabled`                     | Enable inlay hints                                                  | `boolean` | `true`           |
+| `catalogLens.hover`                       | Show dependency info on hover                                       | `boolean` | `true`           |
+| `catalogLens.namedCatalogsColors`         | Give each named catalog a unique color                              | `boolean` | `true`           |
+| `catalogLens.namedCatalogsColorsSalt`     | A random string to adding as the salt for the named catalogs colors | `string`  | `"catalog-lens"` |
+| `catalogLens.namedCatalogsLabel`          | Show a small label for named catalog in the inlay hint              | `boolean` | `true`           |
+| `pnpmCatalogLens.enabled`                 | Enable inlay hints                                                  | `boolean` | `true`           |
+| `pnpmCatalogLens.hover`                   | Show dependency info on hover                                       | `boolean` | `true`           |
+| `pnpmCatalogLens.namedCatalogsColors`     | Give each named catalog a unique color                              | `boolean` | `true`           |
+| `pnpmCatalogLens.namedCatalogsColorsSalt` | A random string to adding as the salt for the named catalogs colors | `string`  | `"catalog-lens"` |
+| `pnpmCatalogLens.namedCatalogsLabel`      | Show a small label for named catalog in the inlay hint              | `boolean` | `true`           |
 
 <!-- configs -->
 

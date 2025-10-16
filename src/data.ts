@@ -97,14 +97,14 @@ export class WorkspaceManager {
     }
 
     // check if is pnpm or yarn workspace
-    const file = await findUp([WORKSPACE_FILES.YARN, WORKSPACE_FILES.PNPM], {
+    const file = await findUp([WORKSPACE_FILES.yarn, WORKSPACE_FILES.pnpm], {
       type: 'file',
       cwd: path,
       stopAt,
     })
     logger.info(file)
     if (file) {
-      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'yarn' : 'pnpm' }
+      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.yarn) ? 'yarn' : 'pnpm' }
       this.findUpCache.set(path, workspaceInfo)
       return workspaceInfo
     }
@@ -122,7 +122,7 @@ export class WorkspaceManager {
       return workspaceInfo
     }
 
-    logger.error(`No workspace file (${WORKSPACE_FILES.YARN} or ${WORKSPACE_FILES.PNPM}) found in`, path)
+    logger.error(`No workspace file (${WORKSPACE_FILES.yarn} or ${WORKSPACE_FILES.pnpm}) found in`, path)
     return null
   }
 

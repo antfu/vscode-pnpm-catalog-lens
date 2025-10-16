@@ -5,7 +5,7 @@
   "version": "0.4.1",
   "private": true,
   "packageManager": "pnpm@10.18.3",
-  "description": "Show inlay version for Pnpm/Yarn/Bun catalogs",
+  "description": "Show inlay version for PNPM/Yarn/Bun catalogs",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
   "funding": "https://github.com/sponsors/antfu",
@@ -42,6 +42,17 @@
   "contributes": {
     "commands": [
       {
+        "category": "Catalog Lens",
+        "title": "Toggle",
+        "command": "catalogLens.toggle"
+      },
+      {
+        "category": "Catalog Lens",
+        "title": "Go to Definition",
+        "command": "catalogLens.gotoDefinition"
+      },
+
+      {
         "category": "PNPM Catalog Lens",
         "title": "Toggle",
         "command": "pnpmCatalogLens.toggle"
@@ -55,6 +66,32 @@
     "configuration": {
       "type": "object",
       "properties": {
+        "catalogLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inlay hints"
+        },
+        "catalogLens.hover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show dependency info on hover"
+        },
+        "catalogLens.namedCatalogsColors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give each named catalog a unique color"
+        },
+        "catalogLens.namedCatalogsColorsSalt": {
+          "type": "string",
+          "default": "catalog-lens",
+          "description": "A random string to adding as the salt for the named catalogs colors"
+        },
+        "catalogLens.namedCatalogsLabel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a small label for named catalog in the inlay hint"
+        },
+
         "pnpmCatalogLens.enabled": {
           "type": "boolean",
           "default": true,
@@ -72,7 +109,7 @@
         },
         "pnpmCatalogLens.namedCatalogsColorsSalt": {
           "type": "string",
-          "default": "pnpm-catalog-lens",
+          "default": "catalog-lens",
           "description": "A random string to adding as the salt for the named catalogs colors"
         },
         "pnpmCatalogLens.namedCatalogsLabel": {
@@ -87,7 +124,7 @@
     "build": "tsdown",
     "dev": "nr build --watch",
     "prepare": "nr update",
-    "update": "vscode-ext-gen --output src/generated/meta.ts --scope pnpmCatalogLens",
+    "update": "vscode-ext-gen --output src/generated/meta.ts --scope catalogLens",
     "lint": "eslint .",
     "vscode:prepublish": "nr build",
     "ext:publish": "vsce publish --no-dependencies",
