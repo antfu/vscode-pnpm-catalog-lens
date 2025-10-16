@@ -97,14 +97,14 @@ export class WorkspaceManager {
     }
 
     // check if is pnpm or yarn workspace
-    const file = await findUp([WORKSPACE_FILES.YARN, WORKSPACE_FILES.PNPM], {
+    const file = await findUp([WORKSPACE_FILES.yarn, WORKSPACE_FILES.pnpm], {
       type: 'file',
       cwd: path,
       stopAt,
     })
     logger.info(file)
     if (file) {
-      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.YARN) ? 'Yarn' : 'PNPM' }
+      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.yarn) ? 'yarn' : 'pnpm' }
       this.findUpCache.set(path, workspaceInfo)
       return workspaceInfo
     }
@@ -117,12 +117,12 @@ export class WorkspaceManager {
     })
     if (bun) {
       const filepath = join(dirname(bun), 'package.json')
-      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'Bun' }
+      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'bun' }
       this.findUpCache.set(path, workspaceInfo)
       return workspaceInfo
     }
 
-    logger.error(`No workspace file (${WORKSPACE_FILES.YARN} or ${WORKSPACE_FILES.PNPM}) found in`, path)
+    logger.error(`No workspace file (${WORKSPACE_FILES.yarn} or ${WORKSPACE_FILES.pnpm}) found in`, path)
     return null
   }
 
@@ -147,9 +147,9 @@ export class WorkspaceManager {
   }
 
   private async loadWorkspace(doc: TextDocument, manager: PackageManager): Promise<WorkspaceData> {
-    if (manager === 'PNPM' || manager === 'Yarn')
+    if (manager === 'pnpm' || manager === 'yarn')
       return YAML.load(doc.getText()) as WorkspaceData
-    if (manager === 'Bun') {
+    if (manager === 'bun') {
       try {
         return JSON.parse(doc.getText()).workspaces || {} as WorkspaceData
       }

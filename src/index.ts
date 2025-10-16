@@ -9,7 +9,7 @@ import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
 import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config, enabled, hover, namedCatalogsColors, namedCatalogsColorsSalt, namedCatalogsLabel } from './config'
-import { catalogPrefix } from './constants'
+import { catalogPrefix, PACKAGE_MANAGERS_NAME } from './constants'
 import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
 import { getCatalogColor, getNodeRange, logger } from './utils'
@@ -154,7 +154,7 @@ const { activate, deactivate } = defineExtension(() => {
 
       const md = new MarkdownString()
       md.appendMarkdown([
-        `- ${packageManager} Catalog: \`${catalog}\``,
+        `- ${packageManager ? PACKAGE_MANAGERS_NAME[packageManager] : ''} Catalog: \`${catalog}\``,
         versionPositionCommandUri ? `- Version: [${version}](${versionPositionCommandUri})` : `- Version: \`${version}\``,
       ].join('\n'))
       md.isTrusted = true
