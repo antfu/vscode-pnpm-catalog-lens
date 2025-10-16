@@ -51,7 +51,6 @@
         "title": "Go to Definition",
         "command": "catalogLens.gotoDefinition"
       },
-
       {
         "category": "PNPM Catalog Lens",
         "title": "Toggle",
@@ -91,7 +90,6 @@
           "default": true,
           "description": "Show a small label for named catalog in the inlay hint"
         },
-
         "pnpmCatalogLens.enabled": {
           "type": "boolean",
           "default": true,
@@ -134,8 +132,8 @@
     "release": "bumpp"
   },
   "devDependencies": {
-    "@antfu/eslint-config": "^5.4.1",
-    "@antfu/ni": "^26.1.0",
+    "@antfu/eslint-config": "^6.0.0",
+    "@antfu/ni": "^26.2.0",
     "@babel/core": "^7.28.4",
     "@babel/preset-typescript": "^7.27.1",
     "@babel/traverse": "^7.28.4",
@@ -143,7 +141,7 @@
     "@reactive-vscode/vueuse": "^0.4.0",
     "@types/babel__core": "^7.20.5",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.7.2",
+    "@types/node": "^24.8.0",
     "@types/vscode": "1.90.0",
     "@vscode/vsce": "^3.6.2",
     "bumpp": "^10.3.1",
