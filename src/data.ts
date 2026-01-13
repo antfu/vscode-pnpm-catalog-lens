@@ -151,7 +151,17 @@ export class WorkspaceManager {
       return YAML.load(doc.getText()) as WorkspaceData
     if (manager === 'bun') {
       try {
-        return JSON.parse(doc.getText()).workspaces || {} as WorkspaceData
+        const parsed = JSON.parse(doc.getText())
+        // Priority: root-level catalog/catalogs > workspaces.catalog/catalogs (for backward compatibility)
+        const rootCatalog = parsed.catalog
+        const rootCatalogs = parsed.catalogs
+        const workspacesCatalog = parsed.workspaces?.catalog
+        const workspacesCatalogs = parsed.workspaces?.catalogs
+
+        return {
+          catalog: rootCatalog || workspacesCatalog,
+          catalogs: rootCatalogs || workspacesCatalogs,
+        } as WorkspaceData
       }
       catch {
         // Safe guard
@@ -277,21 +287,44 @@ export class WorkspaceManager {
           const key = path.node.key
           const value = path.node.value
 
+          // Handle root-level catalog and catalogs (priority)
+          if (key.type === 'StringLiteral') {
+            if (key.value === 'catalog' && value.type === 'ObjectExpression') {
+              setActualPosition(value.properties, data.catalog, code)
+            }
+            else if (key.value === 'catalogs' && value.type === 'ObjectExpression') {
+              value.properties.forEach((catalogProp) => {
+                if (catalogProp.type === 'ObjectProperty' && catalogProp.key.type === 'StringLiteral' && catalogProp.value.type === 'ObjectExpression') {
+                  const catalogName = catalogProp.key.value
+                  data.catalogs[catalogName] = {}
+                  setActualPosition(catalogProp.value.properties, data.catalogs[catalogName], code)
+                }
+              })
+            }
+          }
+
+          // Handle workspaces.catalog and workspaces.catalogs (backward compatibility)
           if (key.type === 'StringLiteral' && key.value === 'workspaces') {
             if (value.type === 'ObjectExpression') {
               value.properties.forEach((prop) => {
                 if (prop.type === 'ObjectProperty' && prop.key.type === 'StringLiteral') {
                   if (prop.key.value === 'catalog' && prop.value.type === 'ObjectExpression') {
-                    setActualPosition(prop.value.properties, data.catalog, code)
+                    // Only set if root-level catalog doesn't exist
+                    if (Object.keys(data.catalog).length === 0) {
+                      setActualPosition(prop.value.properties, data.catalog, code)
+                    }
                   }
                   else if (prop.key.value === 'catalogs' && prop.value.type === 'ObjectExpression') {
-                    prop.value.properties.forEach((catalogProp) => {
-                      if (catalogProp.type === 'ObjectProperty' && catalogProp.key.type === 'StringLiteral' && catalogProp.value.type === 'ObjectExpression') {
-                        const catalogName = catalogProp.key.value
-                        data.catalogs[catalogName] = {}
-                        setActualPosition(catalogProp.value.properties, data.catalogs[catalogName], code)
-                      }
-                    })
+                    // Only set if root-level catalogs doesn't exist
+                    if (Object.keys(data.catalogs).length === 0) {
+                      prop.value.properties.forEach((catalogProp) => {
+                        if (catalogProp.type === 'ObjectProperty' && catalogProp.key.type === 'StringLiteral' && catalogProp.value.type === 'ObjectExpression') {
+                          const catalogName = catalogProp.key.value
+                          data.catalogs[catalogName] = {}
+                          setActualPosition(catalogProp.value.properties, data.catalogs[catalogName], code)
+                        }
+                      })
+                    }
                   }
                 }
               })
