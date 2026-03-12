@@ -76,7 +76,7 @@ export class WorkspaceManager {
     return { version, definition, manager: workspaceInfo.manager }
   }
 
-  private async getPackageManager(uri: Uri | undefined): Promise<PackageManager | null> {
+  private async getPackageManager(uri: Uri): Promise<PackageManager | null> {
     try {
       return await commands.executeCommand('npm.packageManager', uri) || null
     }
@@ -92,8 +92,10 @@ export class WorkspaceManager {
     }
 
     const folder = workspace.getWorkspaceFolder(uri)
+    if (!folder)
+      return null
 
-    const manager = await this.getPackageManager(folder?.uri)
+    const manager = await this.getPackageManager(folder.uri)
     if (!manager)
       return null
 
