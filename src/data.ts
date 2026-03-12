@@ -86,14 +86,16 @@ export class WorkspaceManager {
   }
 
   private async findWorkspace(uri: Uri): Promise<WorkspaceInfo | null> {
-    const path = uri.fsPath
-    if (this.findUpCache.has(path)) {
-      return this.findUpCache.get(path)!
-    }
-
     const folder = workspace.getWorkspaceFolder(uri)
     if (!folder)
       return null
+
+    const path = uri.fsPath
+
+    const folderPath = folder.uri.fsPath
+    if (this.findUpCache.has(folderPath)) {
+      return this.findUpCache.get(folderPath)!
+    }
 
     const manager = await this.getPackageManager(folder.uri)
     if (!manager)
@@ -103,7 +105,7 @@ export class WorkspaceManager {
     const file = await findUp(workspaceFile, {
       type: 'file',
       cwd: path,
-      stopAt: folder?.uri.fsPath,
+      stopAt: folderPath,
     })
 
     logger.info('Found workspace file:', file)
@@ -112,7 +114,7 @@ export class WorkspaceManager {
         path: file,
         manager,
       }
-      this.findUpCache.set(path, workspaceInfo)
+      this.findUpCache.set(folderPath, workspaceInfo)
       return workspaceInfo
     }
 
