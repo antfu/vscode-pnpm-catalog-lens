@@ -2,15 +2,14 @@ import type { ObjectMethod, ObjectProperty, SpreadElement } from '@babel/types'
 import type { Location, TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
 import type { PackageManager } from './types'
-import { dirname, join } from 'node:path'
 import { parseSync, traverse } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
 import { findUp } from 'find-up'
 import YAML from 'js-yaml'
-import { Range, Uri, workspace } from 'vscode'
+import { commands, Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
-import { BUN_LOCKS, WORKSPACE_FILES } from './constants'
+import { WORKSPACE_FILES } from './constants'
 import { logger } from './utils'
 
 export interface WorkspaceData {
@@ -39,7 +38,7 @@ export class WorkspaceManager {
   private positionDataMap = new Map<string, WorkspacePositionData>()
 
   async resolveCatalog(doc: TextDocument, name: string, catalog: string) {
-    const workspaceInfo = await this.findWorkspace(doc.uri.fsPath)
+    const workspaceInfo = await this.findWorkspace(doc.uri)
     if (!workspaceInfo) {
       return null
     }
@@ -77,48 +76,45 @@ export class WorkspaceManager {
     return { version, definition, manager: workspaceInfo.manager }
   }
 
-  private async findWorkspace(path: string): Promise<WorkspaceInfo | null> {
-    if (this.findUpCache.has(path)) {
-      return this.findUpCache.get(path)!
+  private async getPackageManager(uri: Uri): Promise<PackageManager | null> {
+    try {
+      return await commands.executeCommand('npm.packageManager', uri) || null
+    }
+    catch {
+      return null
+    }
+  }
+
+  private async findWorkspace(uri: Uri): Promise<WorkspaceInfo | null> {
+    const folder = workspace.getWorkspaceFolder(uri)
+    if (!folder)
+      return null
+
+    const path = uri.fsPath
+
+    const folderPath = folder.uri.fsPath
+    if (this.findUpCache.has(folderPath)) {
+      return this.findUpCache.get(folderPath)!
     }
 
-    // Get workspace folders to limit search scope
-    const workspaceFolders = workspace.workspaceFolders
-    let stopAt: string | undefined
+    const manager = await this.getPackageManager(folder.uri)
+    if (!manager)
+      return null
 
-    if (workspaceFolders) {
-      // Find which workspace folder contains the current path
-      for (const folder of workspaceFolders) {
-        if (path.startsWith(folder.uri.fsPath)) {
-          stopAt = folder.uri.fsPath
-          break
-        }
-      }
-    }
-
-    // check if is pnpm or yarn workspace
-    const file = await findUp([WORKSPACE_FILES.yarn, WORKSPACE_FILES.pnpm], {
+    const workspaceFile = WORKSPACE_FILES[manager]
+    const file = await findUp(workspaceFile, {
       type: 'file',
       cwd: path,
-      stopAt,
+      stopAt: folderPath,
     })
-    logger.info(file)
+
+    logger.info('Found workspace file:', file)
     if (file) {
-      const workspaceInfo: WorkspaceInfo = { path: file, manager: file.includes(WORKSPACE_FILES.yarn) ? 'yarn' : 'pnpm' }
-      this.findUpCache.set(path, workspaceInfo)
-      return workspaceInfo
-    }
-
-    // check if is bun workspace
-    const bun = await findUp(BUN_LOCKS, {
-      type: 'file',
-      cwd: path,
-      stopAt,
-    })
-    if (bun) {
-      const filepath = join(dirname(bun), 'package.json')
-      const workspaceInfo: WorkspaceInfo = { path: filepath, manager: 'bun' }
-      this.findUpCache.set(path, workspaceInfo)
+      const workspaceInfo: WorkspaceInfo = {
+        path: file,
+        manager,
+      }
+      this.findUpCache.set(folderPath, workspaceInfo)
       return workspaceInfo
     }
 

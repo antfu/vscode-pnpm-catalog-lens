@@ -15,5 +15,3 @@ export const WORKSPACE_FILES: Record<PackageManager, string> = {
   yarn: '.yarnrc.yml',
   bun: 'package.json',
 } as const
-
-export const BUN_LOCKS = ['bun.lockb', 'bun.lock']
