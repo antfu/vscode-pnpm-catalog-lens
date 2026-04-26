@@ -37,6 +37,48 @@ export class WorkspaceManager {
   private findUpCache = new Map<string, WorkspaceInfo>()
   private positionDataMap = new Map<string, WorkspacePositionData>()
 
+  async findCatalogEntryAtLine(
+    doc: TextDocument,
+    zeroBasedLine: number,
+  ): Promise<{ name: string, range: Range } | null> {
+    const positionData = this.readWorkspacePosition(doc)
+    if (!positionData)
+      return null
+
+    const hasEntries = Object.keys(positionData.catalog).length > 0
+      || Object.values(positionData.catalogs).some(m => Object.keys(m).length > 0)
+    if (!hasEntries)
+      return null
+
+    const targetLine = zeroBasedLine + 1 // AST positions are 1-indexed
+
+    const findInMap = (map: Record<string, [AST.Position, AST.Position]>) => {
+      for (const [name, [start, end]] of Object.entries(map)) {
+        if (start.line !== targetLine)
+          continue
+        const lineText = doc.lineAt(start.line - 1).text
+        const keyStart = Math.max(lineText.search(/\S/), 0)
+        return {
+          name,
+          range: new Range(start.line - 1, keyStart, end.line - 1, end.column),
+        }
+      }
+      return null
+    }
+
+    const found = findInMap(positionData.catalog)
+    if (found)
+      return found
+
+    for (const map of Object.values(positionData.catalogs)) {
+      const f = findInMap(map)
+      if (f)
+        return f
+    }
+
+    return null
+  }
+
   async resolveCatalog(doc: TextDocument, name: string, catalog: string) {
     const workspaceInfo = await this.findWorkspace(doc.uri)
     if (!workspaceInfo) {
@@ -171,10 +213,18 @@ export class WorkspaceManager {
       return this.positionDataMap.get(doc.uri.fsPath)!
     }
 
-    if (doc.uri.fsPath.endsWith('.json'))
-      return this.readJsonWorkspacePosition(doc)
-    else
-      return this.readYamlWorkspacePosition(doc)
+    const data = doc.uri.fsPath.endsWith('.json')
+      ? this.readJsonWorkspacePosition(doc)
+      : this.readYamlWorkspacePosition(doc)
+
+    const disposable = workspace.onDidChangeTextDocument((e) => {
+      if (e.document.uri.fsPath === doc.uri.fsPath) {
+        this.positionDataMap.delete(doc.uri.fsPath)
+        disposable.dispose()
+      }
+    })
+
+    return data
   }
 
   private readYamlWorkspacePosition(doc: TextDocument) {

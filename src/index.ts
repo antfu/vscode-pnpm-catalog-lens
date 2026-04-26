@@ -7,12 +7,13 @@ import { parseSync } from '@babel/core'
 import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, Hover, l10n, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config, enabled, hover, namedCatalogsColors, namedCatalogsColorsSalt, namedCatalogsLabel } from './config'
 import { catalogPrefix, PACKAGE_MANAGERS_NAME } from './constants'
 import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { getCatalogColor, getNodeRange, logger } from './utils'
+import { fetchPackageInfo } from './packageInfo'
+import { fromNow, getCatalogColor, getNodeRange, logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new WorkspaceManager()
@@ -265,6 +266,52 @@ const { activate, deactivate } = defineExtension(() => {
         return definition
       },
     }),
+  )
+
+  useDisposable(
+    languages.registerHoverProvider(
+      [
+        { pattern: '**/pnpm-workspace.yaml' },
+        { pattern: '**/.yarnrc.yml' },
+        { pattern: '**/package.json' },
+      ],
+      {
+        async provideHover(document, position, token) {
+          if (!hover())
+            return
+
+          const entry = await manager.findCatalogEntryAtLine(document, position.line)
+          if (!entry || token.isCancellationRequested)
+            return
+
+          const cwd = workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+          const info = await fetchPackageInfo(entry.name, cwd)
+          if (!info || token.isCancellationRequested)
+            return
+
+          const str = new MarkdownString()
+
+          if (info.description)
+            str.appendText(info.description)
+
+          if (info.version) {
+            str.appendText('\n\n')
+            str.appendText(
+              info.time
+                ? l10n.t('Latest version: {0} published {1}', info.version, fromNow(Date.parse(info.time), true, true))
+                : l10n.t('Latest version: {0}', info.version),
+            )
+          }
+
+          if (info.homepage) {
+            str.appendText('\n\n')
+            str.appendText(info.homepage)
+          }
+
+          return new Hover(str, entry.range)
+        },
+      },
+    ),
   )
 })
 
