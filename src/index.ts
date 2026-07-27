@@ -1,24 +1,43 @@
 import type { ObjectProperty, StringLiteral } from '@babel/types'
-import type { DecorationOptions, Selection } from 'vscode'
-import type { JumpLocationParams } from './data'
+import type { DecorationOptions, Selection, Terminal } from 'vscode'
+import type { JumpLocationParams, UpgradeVersionParams } from './data'
 
+import type { PackageManager } from './types'
 import { parseSync } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
+// @ts-expect-error missing types
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace, WorkspaceEdit } from 'vscode'
 import { config, enabled, hover, namedCatalogsColors, namedCatalogsColorsSalt, namedCatalogsLabel } from './config'
 import { catalogPrefix, PACKAGE_MANAGERS_NAME } from './constants'
 import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
 import { getCatalogColor, getNodeRange, logger } from './utils'
 
+const versionRangePrefixRe = /^\D*/
+const packageJsonRe = /[\\/]package\.json$/
+
+let terminal: Terminal | undefined
+
+export function getInstallCommand(manager: PackageManager) {
+  switch (manager) {
+    case 'pnpm':
+      return 'pnpm install'
+    case 'yarn':
+      return 'yarn install'
+    case 'bun':
+      return 'bun install'
+  }
+}
+
 const { activate, deactivate } = defineExtension(() => {
   const manager = new WorkspaceManager()
 
   const editor = useActiveTextEditor()
   const tick = shallowRef(0)
+  const packageUpdateTick = shallowRef(0)
 
   useDisposable(workspace.onDidChangeTextDocument(() => {
     tick.value++
@@ -26,12 +45,15 @@ const { activate, deactivate } = defineExtension(() => {
   useDisposable(workspace.onDidOpenTextDocument(() => {
     tick.value++
   }))
+  useDisposable(manager.onDidUpdatePackages(() => {
+    packageUpdateTick.value++
+  }))
 
   const doc = computed(() => {
     track(tick)
     if (!editor.value || !editor.value.document)
       return
-    if (!editor.value.document.fileName.match(/[\\/]package\.json$/))
+    if (!packageJsonRe.test(editor.value.document.fileName))
       return
     return editor.value.document
   })
@@ -82,7 +104,7 @@ const { activate, deactivate } = defineExtension(() => {
     const { ast } = parsed.value
 
     traverse(ast, {
-      ObjectProperty(path) {
+      ObjectProperty(path: any) {
         const key = path.node.key
         const value = path.node.value
 
@@ -116,12 +138,15 @@ const { activate, deactivate } = defineExtension(() => {
   }))
 
   watchEffect(async () => {
+    track(packageUpdateTick)
+
     if (!enabled() || !editor.value || !doc.value || editor.value?.document !== doc.value) {
       decorationsOverride.value = []
       decorationsHover.value = []
       return
     }
 
+    const packageJsonDoc = doc.value!
     const offset = parsed.value?.offset || 0
     const props = properties.value
     const _selections = selections.value
@@ -132,34 +157,16 @@ const { activate, deactivate } = defineExtension(() => {
     await Promise.all(props.map(async ({ node, catalog }) => {
       catalog = catalog || 'default'
       const { version, definition, manager: packageManager } = await manager.resolveCatalog(
-        doc.value!,
+        packageJsonDoc,
         (node.key as StringLiteral).value,
         catalog,
       ) || {}
       if (!version)
         return
 
-      let versionPositionCommandUri
-      if (definition) {
-        const args = [
-          {
-            workspacePath: definition.uri.fsPath,
-            versionPosition: { line: definition.range.start.line + 1, column: definition.range.start.character },
-          } satisfies JumpLocationParams,
-        ]
-        versionPositionCommandUri = Uri.parse(
-          `command:${commands.gotoDefinition}?${encodeURIComponent(JSON.stringify(args))}`,
-        )
-      }
+      const packageName = (node.key as StringLiteral).value
 
-      const md = new MarkdownString()
-      md.appendMarkdown([
-        `- ${packageManager ? PACKAGE_MANAGERS_NAME[packageManager] : ''} Catalog: \`${catalog}\``,
-        versionPositionCommandUri ? `- Version: [${version}](${versionPositionCommandUri})` : `- Version: \`${version}\``,
-      ].join('\n'))
-      md.isTrusted = true
-
-      const range = getNodeRange(doc.value!, node, offset)
+      const range = getNodeRange(packageJsonDoc, node, offset)
       let inSelection = false
       for (const selection of _selections) {
         if (selection.contains(range)) {
@@ -172,14 +179,6 @@ const { activate, deactivate } = defineExtension(() => {
           break
         }
       }
-
-      hovers.push({
-        range: new Range(
-          doc.value!.positionAt(node.start! + offset),
-          doc.value!.positionAt(node.end! + offset),
-        ),
-        hoverMessage: md,
-      })
 
       const color = namedCatalogsColors()
         ? getCatalogColor(catalog === 'default' ? 'default' : `${catalog}-${namedCatalogsColorsSalt()}`)
@@ -203,6 +202,74 @@ const { activate, deactivate } = defineExtension(() => {
           },
         })
       }
+
+      let versionPositionCommandUri: Uri | undefined
+      if (definition) {
+        const args = [
+          {
+            workspacePath: definition.uri.fsPath,
+            versionPosition: { line: definition.range.start.line + 1, column: definition.range.start.character },
+          } satisfies JumpLocationParams,
+        ]
+        versionPositionCommandUri = Uri.parse(
+          `command:${commands.gotoDefinition}?${encodeURIComponent(JSON.stringify(args))}`,
+        )
+      }
+
+      const [installedVersion, latestVersion] = await Promise.all([
+        manager.getInstalledVersion(packageJsonDoc, packageName),
+        manager.getLatestVersion(packageName),
+      ])
+
+      const lines = [
+        '---',
+        `**${packageManager ? PACKAGE_MANAGERS_NAME[packageManager] : ''} Catalog: \`${catalog}\`**`,
+        versionPositionCommandUri ? `- Version: [\`${version}\`](${versionPositionCommandUri})` : `- Version: \`${version}\``,
+      ]
+
+      if (latestVersion) {
+        const isLatestInstalled = latestVersion === installedVersion
+
+        if (installedVersion) {
+          lines.push(`- Installed: \`${isLatestInstalled ? 'latest' : installedVersion}\``)
+        }
+
+        if (!isLatestInstalled && definition && packageManager) {
+          const prefix = version.match(versionRangePrefixRe)?.[0] ?? ''
+          const upgradeArgs = [
+            {
+              cwd: Uri.joinPath(definition.uri, '..').fsPath,
+              manager: packageManager,
+              newVersion: `${prefix}${latestVersion}`,
+              packageName,
+              workspacePath: definition.uri.fsPath,
+              versionRange: {
+                end: { character: definition.range.end.character, line: definition.range.end.line },
+                start: { character: definition.range.start.character, line: definition.range.start.line },
+              },
+            } satisfies UpgradeVersionParams,
+          ]
+          const upgradeCommandUri = Uri.parse(
+            `command:${commands.upgradeVersion}?${encodeURIComponent(JSON.stringify(upgradeArgs))}`,
+          )
+          lines.push(`[Upgrade to latest](${upgradeCommandUri} "Installs ${packageName}@${latestVersion}")`)
+        }
+      }
+      else if (installedVersion) {
+        lines.push(`- Installed: \`${installedVersion}\``)
+      }
+
+      const md = new MarkdownString()
+      md.appendMarkdown(lines.join('\n'))
+      md.isTrusted = true
+
+      hovers.push({
+        range: new Range(
+          doc.value!.positionAt(node.start! + offset),
+          doc.value!.positionAt(node.end! + offset),
+        ),
+        hoverMessage: md,
+      })
     }),
     )
 
@@ -235,9 +302,28 @@ const { activate, deactivate } = defineExtension(() => {
       'goto',
     )
   }
+  const upgradeVersionCommand = async ({ cwd, manager: packageManager, newVersion, workspacePath, versionRange }: UpgradeVersionParams) => {
+    const uri = Uri.file(workspacePath)
+    const document = await workspace.openTextDocument(uri)
+    const range = new Range(
+      new Position(versionRange.start.line, versionRange.start.character),
+      new Position(versionRange.end.line, versionRange.end.character),
+    )
+    const edit = new WorkspaceEdit()
+    edit.replace(uri, range, newVersion)
+    await workspace.applyEdit(edit)
+    await document.save()
+
+    // We use a terminal because `install` might trigger a prompt or show feedback, like new scripts to approve
+    const command = getInstallCommand(packageManager)
+    terminal ??= window.createTerminal({ name: 'Catalog Lens', cwd })
+    terminal.show()
+    terminal.sendText(command)
+  }
 
   useCommand(commands.toggle, toggleCommand)
   useCommand(commands.gotoDefinition, gotoDefinitionCommand)
+  useCommand(commands.upgradeVersion, upgradeVersionCommand)
 
   // Legacy commands for backward compatibility - will be removed in future versions
   useCommand(commands.pnpmCatalogLensToggle, toggleCommand)

@@ -1,12 +1,10 @@
 shellEmulator: true
 
-trustPolicy: no-downgrade
+# unusable due to flawed strategy that results in false positives: https://github.com/orgs/pnpm/discussions/11084#discussioncomment-16355455
+# eslint-disable-next-line pnpm/yaml-enforce-settings
+trustPolicy: off
 
-packages:
-  - playground
-  - examples/*
-onlyBuiltDependencies:
-  - '@vscode/vsce-sign'
-  - esbuild
-  - keytar
-  - vsxpub
+allowBuilds:
+  '@vscode/vsce-sign': true
+  esbuild: true
+  keytar: true

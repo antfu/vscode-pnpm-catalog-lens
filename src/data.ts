@@ -2,12 +2,15 @@ import type { ObjectMethod, ObjectProperty, SpreadElement } from '@babel/types'
 import type { Location, TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
 import type { PackageManager } from './types'
+import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { parseSync, traverse } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
+import { getLatestVersion } from 'fast-npm-meta'
 import { findUp } from 'find-up'
 import YAML from 'js-yaml'
-import { commands, Range, Uri, workspace } from 'vscode'
+import { commands, EventEmitter, Range, RelativePattern, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
 import { WORKSPACE_FILES } from './constants'
 import { logger } from './utils'
@@ -27,18 +30,106 @@ export interface JumpLocationParams {
   versionPosition: AST.Position
 }
 
+export interface UpgradeVersionParams {
+  cwd: string
+  manager: PackageManager
+  newVersion: string
+  packageName: string
+  workspacePath: string
+  versionRange: {
+    end: { character: number, line: number }
+    start: { character: number, line: number }
+  }
+}
+
 export interface WorkspaceInfo {
   path: string
   manager: PackageManager
 }
 
+const INVALIDATE_INSTALLED_VERSION_CACHE_DEBOUNCE_DURATION = 500
+
 export class WorkspaceManager {
   private dataMap = new Map<string, WorkspaceData>()
   private findUpCache = new Map<string, WorkspaceInfo>()
   private positionDataMap = new Map<string, WorkspacePositionData>()
+  private installedVersionCache = new Map<string, string>()
+  private nodeModulesWatchers = new Set<string>()
+  private invalidateInstalledVersionCacheTimeout: ReturnType<typeof setTimeout> | undefined
 
-  async resolveCatalog(doc: TextDocument, name: string, catalog: string) {
-    const workspaceInfo = await this.findWorkspace(doc.uri)
+  private readonly _onDidUpdatePackages = new EventEmitter<void>()
+  readonly onDidUpdatePackages = this._onDidUpdatePackages.event
+
+  /**
+   * Resolve the version installed in `node_modules`, walking up from the
+   * package.json directory to support hoisted (workspace root) installs.
+   */
+  async getInstalledVersion(doc: TextDocument, name: string) {
+    const packageJsonPath = doc.uri.fsPath
+    const cacheKey = `${packageJsonPath}:${name}`
+    const cached = this.installedVersionCache.get(cacheKey)
+    if (cached)
+      return cached
+
+    let currentRootDir = dirname(packageJsonPath)
+    while (true) {
+      try {
+        const pkgDir = join(currentRootDir, 'node_modules', name)
+        const version = JSON.parse(await readFile(join(pkgDir, 'package.json'), 'utf8')).version
+        if (typeof version === 'string') {
+          this.installedVersionCache.set(cacheKey, version)
+          this.setupInstalledVersionCacheInvalidation(join(currentRootDir, 'node_modules'))
+          return version
+        }
+      }
+      catch {
+        // Not found at this level, keep walking up
+      }
+
+      const parent = dirname(currentRootDir)
+      if (parent === currentRootDir) {
+        return
+      }
+      currentRootDir = parent
+    }
+  }
+
+  private setupInstalledVersionCacheInvalidation(nodeModulesDir: string) {
+    if (this.nodeModulesWatchers.has(nodeModulesDir))
+      return
+    this.nodeModulesWatchers.add(nodeModulesDir)
+
+    const watcher = workspace.createFileSystemWatcher(new RelativePattern(Uri.file(nodeModulesDir), '*'))
+    const invalidate = () => {
+      if (this.invalidateInstalledVersionCacheTimeout) {
+        clearTimeout(this.invalidateInstalledVersionCacheTimeout)
+      }
+      this.invalidateInstalledVersionCacheTimeout = setTimeout(() => {
+        this.invalidateInstalledVersionCacheTimeout = undefined
+        this.installedVersionCache.clear()
+        this._onDidUpdatePackages.fire()
+      }, INVALIDATE_INSTALLED_VERSION_CACHE_DEBOUNCE_DURATION)
+    }
+    watcher.onDidChange(invalidate)
+    watcher.onDidCreate(invalidate)
+    watcher.onDidDelete(invalidate)
+  }
+
+  /**
+   * Resolve the `@latest` dist-tag version from the npm registry.
+   */
+  async getLatestVersion(name: string) {
+    try {
+      const { version } = await getLatestVersion(name)
+      return version
+    }
+    catch (error) {
+      logger.error(error)
+    }
+  }
+
+  async resolveCatalog(packageJsonDoc: TextDocument, name: string, catalog: string) {
+    const workspaceInfo = await this.findWorkspace(packageJsonDoc.uri)
     if (!workspaceInfo) {
       return null
     }
@@ -135,6 +226,7 @@ export class WorkspaceManager {
     const disposable = workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.fsPath === doc.uri.fsPath) {
         this.dataMap.delete(doc.uri.fsPath)
+        this.positionDataMap.delete(doc.uri.fsPath)
         disposable.dispose()
       }
     })
