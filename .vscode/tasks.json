@@ -16,7 +16,7 @@
           "background": {
             "activeOnStart": true,
             "beginsPattern": "Build start",
-            "endsPattern": "Build complete"
+            "endsPattern": "Build complete|Rebuilt in "
           }
         }
       ],
