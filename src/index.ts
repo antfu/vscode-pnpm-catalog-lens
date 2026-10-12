@@ -7,12 +7,13 @@ import { parseSync } from '@babel/core'
 import preset from '@babel/preset-typescript'
 import traverse from '@babel/traverse'
 import { computed, defineExtension, executeCommand, shallowRef, toValue as track, useActiveTextEditor, useCommand, useDisposable, useDocumentText, useEditorDecorations, watchEffect } from 'reactive-vscode'
-import { ConfigurationTarget, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
+import { ConfigurationTarget, Hover, l10n, languages, MarkdownString, Position, Range, Uri, window, workspace } from 'vscode'
 import { config, enabled, hover, namedCatalogsColors, namedCatalogsColorsSalt, namedCatalogsLabel } from './config'
 import { catalogPrefix, PACKAGE_MANAGERS_NAME } from './constants'
 import { WorkspaceManager } from './data'
 import { commands } from './generated/meta'
-import { getCatalogColor, getNodeRange, logger } from './utils'
+import { fetchPackageInfo } from './packageInfo'
+import { fromNow, getCatalogColor, getNodeRange, logger } from './utils'
 
 const { activate, deactivate } = defineExtension(() => {
   const manager = new WorkspaceManager()
@@ -265,6 +266,43 @@ const { activate, deactivate } = defineExtension(() => {
         return definition
       },
     }),
+  )
+
+  useDisposable(
+    languages.registerHoverProvider(
+      [
+        { pattern: '**/pnpm-workspace.yaml' },
+        { pattern: '**/.yarnrc.yml' },
+        { pattern: '**/package.json' },
+      ],
+      {
+        async provideHover(document, position, token) {
+          if (!hover())
+            return
+
+          const entry = manager.findCatalogEntryAtLine(document, position.line)
+          if (!entry)
+            return
+
+          const info = await fetchPackageInfo(entry.name)
+          if (!info || token.isCancellationRequested)
+            return
+
+          const str = new MarkdownString()
+
+          str.appendText(
+            info.publishedAt
+              ? l10n.t('Latest version: {0} published {1}', info.version, fromNow(Date.parse(info.publishedAt)))
+              : l10n.t('Latest version: {0}', info.version),
+          )
+
+          if (info.deprecated)
+            str.appendText(`\n\n${l10n.t('Deprecated: {0}', info.deprecated)}`)
+
+          return new Hover(str, entry.range)
+        },
+      },
+    ),
   )
 })
 
