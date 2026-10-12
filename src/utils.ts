@@ -1,7 +1,7 @@
 import type { ObjectProperty } from '@babel/types'
 import type { TextDocument } from 'vscode'
 import { useLogger } from 'reactive-vscode'
-import { Range } from 'vscode'
+import { env, Range } from 'vscode'
 import { displayName } from './generated/meta'
 
 export const logger = useLogger(displayName)
@@ -10,6 +10,39 @@ export function getNodeRange(doc: TextDocument, node: ObjectProperty, offset: nu
   const start = node.value.start! + offset + 1
   const end = node.value.end! + offset - 1
   return new Range(doc.positionAt(start), doc.positionAt(end))
+}
+
+const SECONDS_PER_MINUTE = 60
+const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE
+const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
+
+// Same threshold as VS Code's own relative dates
+const NOW_THRESHOLD_SECONDS = 30
+
+// Largest first, so the first unit that fits is the coarsest one (e.g. 400 days -> "1 year ago")
+const TIME_UNITS: { unit: Intl.RelativeTimeFormatUnit, seconds: number }[] = [
+  { unit: 'year', seconds: 365 * SECONDS_PER_DAY },
+  { unit: 'month', seconds: 30 * SECONDS_PER_DAY },
+  { unit: 'week', seconds: 7 * SECONDS_PER_DAY },
+  { unit: 'day', seconds: SECONDS_PER_DAY },
+  { unit: 'hour', seconds: SECONDS_PER_HOUR },
+  { unit: 'minute', seconds: SECONDS_PER_MINUTE },
+]
+
+/** Formats a date relative to now in VS Code's display language, e.g. "3 hours ago" or "in 2 days". */
+export function fromNow(date: number | Date, now = Date.now()): string {
+  // env.language is VS Code's display language; the default Intl locale follows the OS instead
+  const formatter = new Intl.RelativeTimeFormat(env.language, { numeric: 'auto' })
+  const secondsFromNow = Math.round((new Date(date).getTime() - now) / 1000)
+
+  if (Math.abs(secondsFromNow) < NOW_THRESHOLD_SECONDS)
+    return formatter.format(0, 'second')
+
+  for (const { unit, seconds } of TIME_UNITS) {
+    if (Math.abs(secondsFromNow) >= seconds)
+      return formatter.format(Math.trunc(secondsFromNow / seconds), unit)
+  }
+  return formatter.format(secondsFromNow, 'second')
 }
 
 const catalogColors = new Map<string, string>()
