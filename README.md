@@ -11,6 +11,7 @@
 
 <p align="center">
 Show versions inline for <a href="https://pnpm.io/catalogs" target="_blank">pnpm</a> · <a href="https://yarnpkg.com/features/catalogs" target="_blank">yarn</a> · <a href="https://bun.sh/docs/install/catalogs" target="_blank">bun</a> <code>catalog:</code> fields.<br>
+Supports pnpm catalogs split into local YAML files with <a href="https://pnpm.io/config-includes" target="_blank"><code>include</code></a>.<br>
 </p>
 
 <p align="center">

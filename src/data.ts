@@ -2,6 +2,7 @@ import type { ObjectMethod, ObjectProperty, SpreadElement } from '@babel/types'
 import type { Location, TextDocument } from 'vscode'
 import type { AST } from 'yaml-eslint-parser'
 import type { PackageManager } from './types'
+import { resolve } from 'node:path'
 import { parseSync, traverse } from '@babel/core'
 // @ts-expect-error missing types
 import preset from '@babel/preset-typescript'
@@ -10,11 +11,13 @@ import YAML from 'js-yaml'
 import { commands, Range, Uri, workspace } from 'vscode'
 import { parseYAML } from 'yaml-eslint-parser'
 import { WORKSPACE_FILES } from './constants'
+import { getCatalogIncludePaths } from './pnpm-includes'
 import { logger } from './utils'
 
 export interface WorkspaceData {
   catalog?: Record<string, string>
   catalogs?: Record<string, Record<string, string>>
+  include?: unknown
 }
 
 export interface WorkspacePositionData {
@@ -45,7 +48,12 @@ export class WorkspaceManager {
 
     const workspaceDoc = await workspace.openTextDocument(Uri.file(workspaceInfo.path))
 
-    const data = await this.readWorkspace(workspaceDoc, workspaceInfo.manager)
+    const sourceDoc = await this.resolveWorkspaceSource(workspaceDoc, workspaceInfo.manager, catalog)
+    if (!sourceDoc) {
+      return null
+    }
+
+    const data = await this.readWorkspace(sourceDoc, workspaceInfo.manager)
 
     const map = catalog === 'default'
       ? (data.catalog || data.catalogs?.default)
@@ -54,7 +62,7 @@ export class WorkspaceManager {
     if (!map)
       return null
 
-    const positionData = this.readWorkspacePosition(workspaceDoc)
+    const positionData = this.readWorkspacePosition(sourceDoc)
     if (!positionData)
       return null
 
@@ -68,7 +76,7 @@ export class WorkspaceManager {
     let definition: Location | undefined
     if (versionRange) {
       definition = {
-        uri: Uri.file(workspaceInfo.path),
+        uri: sourceDoc.uri,
         range: new Range(versionRange[0].line - 1, versionRange[0].column, versionRange[1].line - 1, versionRange[1].column),
       }
     }
@@ -135,11 +143,40 @@ export class WorkspaceManager {
     const disposable = workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.fsPath === doc.uri.fsPath) {
         this.dataMap.delete(doc.uri.fsPath)
+        this.positionDataMap.delete(doc.uri.fsPath)
         disposable.dispose()
       }
     })
 
     return data
+  }
+
+  private async resolveWorkspaceSource(rootDoc: TextDocument, manager: PackageManager, catalog: string): Promise<TextDocument | null> {
+    const rootData = await this.readWorkspace(rootDoc, manager)
+    if (manager !== 'pnpm' || this.hasCatalogSetting(rootData, catalog)) {
+      return rootDoc
+    }
+
+    for (const includePath of getCatalogIncludePaths(rootData.include)) {
+      const uri = Uri.file(resolve(rootDoc.uri.fsPath, '..', includePath))
+      try {
+        const includedDoc = await workspace.openTextDocument(uri)
+        const includedData = await this.readWorkspace(includedDoc, manager)
+        if (this.hasCatalogSetting(includedData, catalog))
+          return includedDoc
+      }
+      catch (error) {
+        logger.error(`Unable to read pnpm included config ${includePath}:`, error)
+      }
+    }
+
+    return rootDoc
+  }
+
+  private hasCatalogSetting(data: WorkspaceData, catalog: string) {
+    return catalog === 'default'
+      ? Boolean(data.catalog || data.catalogs?.default)
+      : Boolean(data.catalogs)
   }
 
   private async loadWorkspace(doc: TextDocument, manager: PackageManager): Promise<WorkspaceData> {
